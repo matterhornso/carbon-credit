@@ -1,0 +1,275 @@
+---
+image: docker:19.03.11
+variables:
+  CI_PROJECT_NAME: 'carbon-credit'
+  HELM_PATH: 'deployment/charts/${CI_PROJECT_NAME}'
+  PROJECT_NAME: '${CI_PROJECT_NAME}'
+  DOCKER_BUILD_ARG: ""
+  K8_CLUSTER_NAME: ""
+  K8_CONTEXT: "kubernetes-admin@kubernetes"
+  K8_CLUSTER_REGION: ""
+  # BM_K8_NAMESPACE: "shine-dev"
+  KUBECONFIG: "/builds/shinex-tech/carbon-credit/carbon-credit.tmp/KUBECONFIG"
+  HELM_RELEASE_NAME: "${CI_PROJECT_NAME}"
+  HELM_OPTS: --set-string image.pullSecret.registry=${CI_REGISTRY}
+    --set-string image.pullSecret.username=${DEPLOY_TOKEN}
+    --set-string image.pullSecret.password=${DEPLOY_PASSWORD}
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_DRIVER: overlay2
+  # See https://github.com/docker-library/docker/pull/166
+  DOCKER_TLS_CERTDIR: ""
+
+services:
+  - name: docker:dind
+    entrypoint: ["env", "-u", "DOCKER_HOST"]
+    command: ["dockerd-entrypoint.sh"]
+
+# build: create three different types, to cater for different scenarios:
+# 1. default - feature branch
+# 2. master branch: add a "latest" tag
+# 3. tag: tag with server as a "public" container
+container: &build_default
+  stage: build
+
+  before_script:
+    - |
+      docker --config ./ login \
+             -u gitlab-ci-token \
+             -p $CI_BUILD_TOKEN $CI_REGISTRY
+    - |
+      docker --config ./ build $DOCKER_BUILD_ARG \
+             -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8} .
+
+  script:
+    - ""
+
+  after_script:
+    - docker --config ./ push $CI_REGISTRY_IMAGE
+
+container:main:
+  <<: *build_default
+  only:
+    - master
+  script:
+    - |
+      docker --config ./ tag $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8} \
+                             $CI_REGISTRY_IMAGE:latest
+
+.helm_init: &helm_init
+  image: devth/helm:v3.6.0
+  stage: deploy
+  before_script:
+    - kubectl config view
+    - helm ls --namespace ${BM_K8_NAMESPACE}
+    # - helm uninstall ${HELM_RELEASE_NAME} --namespace ${BM_K8_NAMESPACE}
+
+.helm_deploy: &helm_deploy
+  <<: *helm_init
+  script: &helm_deploy_script
+    - helm upgrade --install --wait --namespace ${BM_K8_NAMESPACE}
+      --set-string image.tag=${CI_COMMIT_SHA:0:8}
+      ${HELM_OPTS} ${HELM_RELEASE_NAME} ${HELM_PATH}
+
+.helm_delete:
+  <<: *helm_init
+  stage: destroy
+  script:
+    - helm delete --purge ${HELM_RELEASE_NAME}
+
+stages:
+  - build-cache
+  - test
+  - build
+  - dev-deploy
+  - staging-deploy
+  - production-deploy
+  - destroy
+
+build-cache:
+  stage: build-cache
+  image: mhart/alpine-node:12.14.1
+  script:
+    - npm ci --no-audit
+  artifacts:
+    paths:
+      - node_modules
+    expire_in: 45 mins
+
+test:
+  stage: test
+  image: mhart/alpine-node:12.14.1
+  script:
+    - npm run test
+  dependencies:
+    - build-cache
+
+
+################################
+# environment: dev
+################################
+deploy_dev:
+  extends: .helm_deploy
+  stage: dev-deploy
+  environment:
+    name: dev
+  variables:
+    # K8_CLUSTER_NAME: ${K8_CLUSTER_NAME}
+    # K8_CLUSTER_REGION: ${K8_CLUSTER_REGION}
+    BM_K8_NAMESPACE: ${BM_K8_NAMESPACE}
+    HELM_RELEASE_NAME: ${CI_PROJECT_NAME}
+    HELM_OPTS: --set-string image.pullSecret.registry=${CI_REGISTRY}
+      --set-string image.pullSecret.username=${DEPLOY_TOKEN}
+      --set-string image.pullSecret.password=${DEPLOY_PASSWORD}
+      --set-string environmentVariables.DB_NAME=${DB_NAME}
+      --set-string environmentVariables.DB_PASS=${DB_PASS}
+      --set-string environmentVariables.DB_USER=${DB_USER}
+      --set-string environmentVariables.MONGODB_URI=${MONGODB_URI}
+      --set-string environmentVariables.ENVIRONMENT=${ENVIRONMENT}
+      --values deployment/charts/config/values-${CI_ENVIRONMENT_NAME}.yaml
+      --debug
+  # only:
+  #   - dev
+  dependencies: []
+  when: manual
+  allow_failure: true
+
+destroy_dev:
+  extends: .helm_delete
+  stage: destroy
+  environment:
+    name: dev
+  variables:
+    K8_CLUSTER_NAME: ${K8_CLUSTER_NAME}
+    K8_CLUSTER_REGION: ${K8_CLUSTER_REGION}
+    BM_K8_NAMESPACE: ${BM_K8_NAMESPACE}
+    HELM_RELEASE_NAME: ${CI_PROJECT_NAME}
+    HELM_OPTS: --set-string image.pullSecret.registry=${CI_REGISTRY}
+      --set-string image.pullSecret.username=${DEPLOY_TOKEN}
+      --set-string image.pullSecret.password=${DEPLOY_PASSWORD}
+      --set-string environmentVariables.DB_NAME=${DB_NAME}
+      --set-string environmentVariables.DB_PASS=${DB_PASS}
+      --set-string environmentVariables.DB_USER=${DB_USER}
+      --set-string environmentVariables.MONGODB_URI=${MONGODB_URI}
+      --set-string environmentVariables.ENVIRONMENT=${ENVIRONMENT}
+      --values deployment/charts/config/values-${CI_ENVIRONMENT_NAME}.yaml
+      --debug
+  # only:
+  #   - dev
+  dependencies:
+    - deploy_dev
+  when: manual
+
+################################
+# environment: staging
+################################
+deploy_staging:
+  extends: .helm_deploy
+  stage: staging-deploy
+  environment:
+    name: staging
+  variables:
+    K8_CLUSTER_NAME: ${K8_CLUSTER_NAME}
+    K8_CLUSTER_REGION: ${K8_CLUSTER_REGION}
+    BM_K8_NAMESPACE: ${BM_K8_NAMESPACE}
+    HELM_RELEASE_NAME: ${CI_PROJECT_NAME}
+    HELM_OPTS: --set-string image.pullSecret.registry=${CI_REGISTRY}
+      --set-string image.pullSecret.username=${DEPLOY_TOKEN}
+      --set-string image.pullSecret.password=${DEPLOY_PASSWORD}
+      --set-string environmentVariables.DB_NAME=${DB_NAME}
+      --set-string environmentVariables.DB_PASS=${DB_PASS}
+      --set-string environmentVariables.DB_USER=${DB_USER}
+      --set-string environmentVariables.MONGODB_URI=${MONGODB_URI}
+      --set-string environmentVariables.ENVIRONMENT=${ENVIRONMENT}
+      --values deployment/charts/config/values-${CI_ENVIRONMENT_NAME}.yaml
+      --debug
+  only:
+    - staging
+  dependencies:
+    - deploy_dev
+  when: manual
+  allow_failure: false
+
+destroy_staging:
+  extends: .helm_delete
+  stage: destroy
+  environment:
+    name: staging
+  variables:
+    K8_CLUSTER_NAME: ${K8_CLUSTER_NAME}
+    K8_CLUSTER_REGION: ${K8_CLUSTER_REGION}
+    BM_K8_NAMESPACE: ${BM_K8_NAMESPACE}
+    HELM_RELEASE_NAME: ${CI_PROJECT_NAME}
+    HELM_OPTS: --set-string image.pullSecret.registry=${CI_REGISTRY}
+      --set-string image.pullSecret.username=${DEPLOY_TOKEN}
+      --set-string image.pullSecret.password=${DEPLOY_PASSWORD}
+      --set-string environmentVariables.DB_NAME=${DB_NAME}
+      --set-string environmentVariables.DB_PASS=${DB_PASS}
+      --set-string environmentVariables.DB_USER=${DB_USER}
+      --set-string environmentVariables.MONGODB_URI=${MONGODB_URI}
+      --set-string environmentVariables.ENVIRONMENT=${ENVIRONMENT}
+      --values deployment/charts/config/values-${CI_ENVIRONMENT_NAME}.yaml
+      --debug
+  only:
+    - staging
+  dependencies:
+    - deploy_staging
+  when: manual
+
+################################
+# environment: production
+################################
+deploy_production:
+  extends: .helm_deploy
+  stage: production-deploy
+  environment:
+    name: production
+  variables:
+    K8_CLUSTER_NAME: ${K8_CLUSTER_NAME}
+    K8_CLUSTER_REGION: ${K8_CLUSTER_REGION}
+    BM_K8_NAMESPACE: ${BM_K8_NAMESPACE}
+    HELM_RELEASE_NAME: ${CI_PROJECT_NAME}
+    HELM_OPTS: --set-string image.pullSecret.registry=${CI_REGISTRY}
+      --set-string image.pullSecret.username=${DEPLOY_TOKEN}
+      --set-string image.pullSecret.password=${DEPLOY_PASSWORD}
+      --set-string environmentVariables.DB_NAME=${DB_NAME}
+      --set-string environmentVariables.DB_PASS=${DB_PASS}
+      --set-string environmentVariables.DB_USER=${DB_USER}
+      --set-string environmentVariables.MONGODB_URI=${MONGODB_URI}
+      --set-string environmentVariables.ENVIRONMENT=${ENVIRONMENT}
+      --values deployment/charts/config/values-${CI_ENVIRONMENT_NAME}.yaml
+      --debug
+  only:
+    - master
+  dependencies:
+    - deploy_staging
+  when: manual
+  allow_failure: false
+
+
+destroy_production:
+  extends: .helm_delete
+  stage: destroy
+  environment:
+    name: production
+  variables:
+    K8_CLUSTER_NAME: ${K8_CLUSTER_NAME}
+    K8_CLUSTER_REGION: ${K8_CLUSTER_REGION}
+    BM_K8_NAMESPACE: ${BM_K8_NAMESPACE}
+    HELM_RELEASE_NAME: ${CI_PROJECT_NAME}
+    HELM_OPTS: --set-string image.pullSecret.registry=${CI_REGISTRY}
+      --set-string image.pullSecret.username=${DEPLOY_TOKEN}
+      --set-string image.pullSecret.password=${DEPLOY_PASSWORD}
+      --set-string environmentVariables.DB_NAME=${DB_NAME}
+      --set-string environmentVariables.DB_PASS=${DB_PASS}
+      --set-string environmentVariables.DB_USER=${DB_USER}
+      --set-string environmentVariables.MONGODB_URI=${MONGODB_URI}
+      --set-string environmentVariables.ENVIRONMENT=${ENVIRONMENT}
+      --values deployment/charts/config/values-${CI_ENVIRONMENT_NAME}.yaml
+      --debug
+  only:
+    - master
+  dependencies:
+    - deploy_production
+  when: manual
+  # testing pipeline
+  

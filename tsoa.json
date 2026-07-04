@@ -1,0 +1,99 @@
+{
+  "swagger": {
+    
+  },
+  "basePath": "/carbon-credit/api/v1",
+  "entryFile": "./src/infrastructure/server.ts",
+  "specVersion": 3,
+  "outputDirectory": "./api/dist",
+  "controllerPathGlobs": [
+    "src/interfaces/controllers/**/*Controller.ts"
+  ],
+  "specMerging": "recursive",
+  "spec": {
+    "securityDefinitions": {
+      "jwt": {
+        "type": "apiKey",
+        "name": "Authorization",
+        "in": "header"
+      }
+    },
+    "host":"localhost:4001/api/v1",
+    "schemes": [
+      "http"
+    ],
+    "servers": [
+      {
+        "url": "http://localhost:4001/api/v1"
+      },
+      {
+        "url": "https://carbon-dev-api.shinetrace.space/carbon-credit/api/v1"
+      },
+      {
+        "url": "https://shine-dev-api-1.shinetrace.space/carbon-credit/api/v1"
+      },
+      {
+        "url": "https://shine-staging-api-1.shinetrace.space/carbon-credit/api/v1"
+      },
+      {
+        "url": "https://shine-prod-api-1.shinetrace.space/carbon-credit/api/v1"
+      }
+    ],
+    "components": {
+      "schemas": {
+      
+        
+        "IUpload": {
+          "properties": {
+            "file": {
+              "type": "string",
+              "format": "binary"
+            }
+          },
+          "type": "object"
+        }
+        
+
+       
+      }
+    },
+    "paths": {
+      "/fileupload/upload": {
+        "post": {
+          "requestBody": {
+            "content": {
+              "multipart/form-data": {
+                "schema": {
+                  "$ref": "#/components/schemas/IUpload"
+                }
+              }
+            }
+          }
+        }
+      },
+        "/fileupload/uploadsftp": {
+          "post": {
+            "requestBody": {
+              "content": {
+                "multipart/form-data": {
+                  "schema": {
+                    "$ref": "#/components/schemas/IUpload"
+                  }
+                }
+              }
+            }
+          }
+        }
+   
+    },
+    "specVersion": 3,
+  "outputDirectory": "./api/dist"
+  },
+  "routes": {
+    "authenticationModule": "./src/application/security/authentication.ts",
+    "basePath": "/api/v1",
+    "entryFile": "./src/infrastructure/server.ts",
+    "routesDir": "./src/infrastructure/routes",
+    "middleware": "express"
+  }
+}

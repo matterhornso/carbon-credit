@@ -1,0 +1,14 @@
+node_modules/
+.vscode/
+dist/
+*.log
+builds/
+cache/
+.DS_Store
+debug.log
+error.log
+info.log
+src/infrastructure/routes/routes.ts
+*-audit.json
+*.log.gz
+.scannerwork/

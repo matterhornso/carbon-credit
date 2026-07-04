@@ -1,0 +1,46 @@
+# Default values for catalyst_payments.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+environment:
+  name: dev
+
+replicaCount: 1
+version: v1
+
+image:
+  repository: registry.gitlab.com/shinex-tech/carbon-credit/carbon-credit
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecret:
+    enabled: true
+    registry: https://hub.docker.com
+    username: username
+    password: password
+
+service:
+  type: ClusterIP
+  port: 4001
+
+containers:
+  port: 4001
+
+pod:
+  initialDelaySeconds: 15
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+environmentVariables: {}
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60
+  targetMemoryUtilizationPercentage: 60
+
+podAntiAffinity:
+  enabled: true
