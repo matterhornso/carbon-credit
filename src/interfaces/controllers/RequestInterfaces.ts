@@ -2,12 +2,42 @@ import { ICredit_period, IParty_and_project_participants, IMethodologies } from 
 import { IShut_down_details, ISummary_of_implementation_milestones } from "../../domain/project_section_b/projectSectionBInterface";
 
 export interface ICreateProjectRequest {
-  company_name: string;
-  start_date: Date;
-  type: string;
-  location: string;
-  duration: number;
-  area: string;
+  name: string;
+  sector: string;
+}
+
+export interface ISelectMethodologyRequest {
+  projectId: string;
+  methodologyId: string;
+}
+
+export interface ISubmitIntakeRequest {
+  projectId: string;
+  intake: { [key: string]: any };
+}
+
+export interface IProjectTransitionRequest {
+  projectId: string;
+  toStatus: string;
+}
+
+export interface IGenerateSectionRequest {
+  projectId: string;
+  sectionKey: string;
+}
+
+export interface IGenerateAllSectionsRequest {
+  projectId: string;
+}
+
+export interface IRefineSectionRequest {
+  projectId: string;
+  sectionKey: string;
+  message: string;
+}
+
+export interface IGenerateCoverNoteRequest {
+  projectId: string;
 }
 
 export interface ICreateReportRequest {

@@ -1,4 +1,5 @@
 import express, { Response as ExResponse, Request as ExRequest } from "express";
+import mongoose from "mongoose";
 import dotenv from "dotenv";
 import path from "path";
 import bodyParser from "body-parser";
@@ -22,7 +23,7 @@ router.set("port", process.env.PORT || 4001);
 router.use(bodyParser.json());
 router.use(bodyParser.urlencoded({ extended: true }));
 router.use(cors({
-  origin: ["https://shine-uat.nseindia.com", "https://nse-dev.shinetrace.space", "http://localhost:3000"]
+  origin: ["https://shine-uat.nseindia.com", "https://nse-dev.shinetrace.space", "http://localhost:3000", "http://localhost:3700"]
 }));
 router.use(helmet());
 // Create a Registry which registers the metrics
@@ -59,7 +60,12 @@ router.get("/livez", function (req, res, next) {
 
 router.get("/readyz", function (req, res, next) {
   logger.debug("route, new request path " + req.path);
-  return res.status(200).json({ status: "carbon credit server readyz!" });
+  // readyState 1 === connected. Report NOT ready without a live DB so k8s
+  // keeps traffic away instead of routing it into guaranteed 500s.
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ status: "not ready: database unavailable" });
+  }
+  return res.status(200).json({ status: "ready" });
 });
 
 router.use("/docs", swaggerUi.serve, async (_req: ExRequest, res: ExResponse) => {

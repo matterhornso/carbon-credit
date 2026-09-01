@@ -15,12 +15,22 @@ export default class Project {
     return this.projectRepository.updateProject(project);
   }
 
-  getAllProjects(filter?:any) {
+  transitionStatus(id: string, status: string) {
+    return this.projectRepository.transitionStatus(id, status);
+  }
+
+  setCaseDocumentId(id: string, caseDocumentId: string) {
+    return this.projectRepository.setCaseDocumentId(id, caseDocumentId);
+  }
+
+  addAttachment(id: string, sourceDocumentId: string) {
+    return this.projectRepository.addAttachment(id, sourceDocumentId);
+  }
+
+  getAllProjects(filter?: any) {
     return this.projectRepository.getAllProjects(filter);
   }
   getProjectById(id: string) {
     return this.projectRepository.getProjectById(id);
   }
-
-
 }

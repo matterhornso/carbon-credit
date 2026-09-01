@@ -1,24 +1,27 @@
-import { Types } from 'mongoose';
-
 export interface IProjectInterface {
-  uuid?: string;
-  company_name?: string;
-  start_date?: Date;
-  type?: string;
-  location?: string;
-  duration?: number;
-  area?: string;
-  section_a?: Types.ObjectId,
-  section_b?: Types.ObjectId,
-  section_c?: Types.ObjectId,
-  section_d?: Types.ObjectId,
-  section_e?: Types.ObjectId,
-  user?: IUser,
+  name?: string;
+  proponentOrgId?: string;
+  createdByUserId?: string;
+  methodologyId?: string;
+  sector?: string;
+  location?: IProjectLocation;
+  scale?: string;
+  startDate?: Date;
+  creditingPeriod?: IProjectCreditingPeriod;
+  status?: string;
+  intake?: Record<string, any>;
+  attachments?: string[];
+  caseDocumentId?: string;
 }
 
-export interface IUser {
-  name: string;
-  email: string;
-  uuid: string;
-  user_id: string;
+export interface IProjectLocation {
+  country?: string;
+  state?: string;
+  city?: string;
+  description?: string;
+}
+
+export interface IProjectCreditingPeriod {
+  start?: Date;
+  end?: Date;
 }

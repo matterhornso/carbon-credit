@@ -1,132 +1,57 @@
 import { expect } from 'chai';
 import { CreateProject } from '../project/CreateProject';
+import { PROJECT_STATUSES } from '../project/projectStatus';
 
 describe('Test class CreateProject', () => {
 
-  it('CreateProject-uuid', () => {
-    // Arguments
-    const project1: any = {
-      company_name: "test_company",
-      start_date: new Date(),
-      type: "project_type",
-      location: "Banglore",
-      duration: 1223,
-      area: "BTM"
-    };
-    const uuid1 = 'Oha';
+  const validProject: any = {
+    name: 'Test Reforestation Project',
+    sector: 'AFOLU',
+    proponentOrgId: 'org-1',
+    createdByUserId: 'user-1',
+  };
 
-    // Property call
-    const createProject = new CreateProject(project1);
-    createProject.uuid = uuid1;
-    const result = createProject.uuid;
-
-    // Expect result
-    expect(result).equals(uuid1);
+  it('sets the supplied fields', () => {
+    const createProject = new CreateProject(validProject);
+    expect(createProject.name).equals(validProject.name);
+    expect(createProject.sector).equals(validProject.sector);
+    expect(createProject.proponentOrgId).equals(validProject.proponentOrgId);
+    expect(createProject.createdByUserId).equals(validProject.createdByUserId);
   });
 
-  it('CreateProject-company_name', () => {
-    // Arguments
-    const project2: any = {
-      company_name: "test_company",
-      start_date: new Date(),
-      type: "project_type",
-      location: "Banglore",
-      duration: 1223,
-      area: "BTM"
-    };
-    const company_name1 = 'Oha';
-
-    // Property call
-    const createProject = new CreateProject(project2);
-    createProject.company_name = company_name1;
-    const result = createProject.company_name;
-
-    // Expect result
-    expect(result).equals(company_name1);
+  it('defaults status to DRAFT_INTAKE', () => {
+    const createProject = new CreateProject(validProject);
+    expect(createProject.status).equals(PROJECT_STATUSES.DRAFT_INTAKE);
   });
 
-  it('CreateProject-type', () => {
-    // Arguments
-    const project3: any = {
-      company_name: "test_company",
-      start_date: new Date(),
-      type: "project_type",
-      location: "Banglore",
-      duration: 1223,
-      area: "BTM"
-    };
-    const type1 = 'Oha';
-
-    // Property call
-    const createProject = new CreateProject(project3);
-    createProject.type = type1;
-    const result = createProject.type;
-
-    // Expect result
-    expect(result).equals(type1);
+  it('defaults attachments to an empty array', () => {
+    const createProject = new CreateProject(validProject);
+    expect(createProject.attachments).to.deep.equal([]);
   });
 
-  it('CreateProject-location', () => {
-    // Arguments
-    const project4: any = {
-      company_name: "test_company",
-      start_date: new Date(),
-      type: "project_type",
-      location: "Banglore",
-      duration: 1223,
-      area: "BTM"
-    };
-    const location1 = 'Oha';
-
-    // Property call
-    const createProject = new CreateProject(project4);
-    createProject.location = location1;
-    const result = createProject.location;
-
-    // Expect result
-    expect(result).equals(location1);
+  it('defaults intake to an empty object', () => {
+    const createProject = new CreateProject(validProject);
+    expect(createProject.intake).to.deep.equal({});
   });
 
-  it('CreateProject-duration', () => {
-    // Arguments
-    const project5: any = {
-      company_name: "test_company",
-      start_date: new Date(),
-      type: "project_type",
-      location: "Banglore",
-      duration: 1223,
-      area: "BTM"
-    };
-    const duration1 = 123;
-
-    // Property call
-    const createProject = new CreateProject(project5);
-    createProject.duration = duration1;
-    const result = createProject.duration;
-
-    // Expect result
-    expect(result).equals(duration1);
+  it('throws when name is missing', () => {
+    const { name, ...rest } = validProject;
+    expect(() => new CreateProject(rest)).to.throw('project name missing!');
   });
 
-  it('CreateProject-area', () => {
-    // Arguments
-    const project6: any = {
-      company_name: "test_company",
-      start_date: new Date(),
-      type: "project_type",
-      location: "Banglore",
-      duration: 1223,
-      area: "BTM"
-    };
-    const area1 = 'Oha';
+  it('throws when sector is missing', () => {
+    const { sector, ...rest } = validProject;
+    expect(() => new CreateProject(rest)).to.throw('project sector missing!');
+  });
 
-    // Property call
-    const createProject = new CreateProject(project6);
-    createProject.area = area1;
-    const result = createProject.area;
+  it('throws when proponentOrgId is missing', () => {
+    const { proponentOrgId, ...rest } = validProject;
+    expect(() => new CreateProject(rest)).to.throw('proponentOrgId missing!');
+  });
 
-    // Expect result
-    expect(result).equals(area1);
+  it('throws when createdByUserId is missing', () => {
+    const { createdByUserId, ...rest } = validProject;
+    expect(() => new CreateProject(rest)).to.throw('createdByUserId missing!');
   });
 
 });

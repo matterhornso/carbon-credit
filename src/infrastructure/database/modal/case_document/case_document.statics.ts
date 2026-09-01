@@ -1,0 +1,50 @@
+import { ICaseDocumentModel } from "./case_document.types";
+import { Model } from "mongoose";
+import { ICaseDocumentInterface } from "../../../../domain/case_document/caseDocumentInterface";
+import { UpdateCaseDocumentSection } from "../../../../domain/case_document/UpdateCaseDocumentSection";
+
+export async function createCaseDocument(
+  this: Model<ICaseDocumentModel>,
+  caseDocument: ICaseDocumentInterface
+): Promise<any> {
+  try {
+    const record = await this.create(caseDocument);
+    return record;
+  } catch (error: any) {
+    console.trace(error);
+    throw new Error("somethings went wrong -> db");
+  }
+}
+
+export async function updateSection(
+  this: Model<ICaseDocumentModel>,
+  update: UpdateCaseDocumentSection
+): Promise<any> {
+  const setFields: any = {};
+  if (update.status) setFields["sections.$.status"] = update.status;
+  if (update.content !== undefined) setFields["sections.$.content"] = update.content;
+  if (update.sourceCitations) setFields["sections.$.sourceCitations"] = update.sourceCitations;
+  if (update.warnings !== undefined) setFields["sections.$.warnings"] = update.warnings;
+  if (update.lastEditedByUserId) setFields["sections.$.lastEditedByUserId"] = update.lastEditedByUserId;
+  setFields["sections.$.lastEditedAt"] = new Date();
+
+  const updateQuery: any = { $set: setFields };
+  if (update.generationHistoryEntry) {
+    updateQuery.$push = { "sections.$.generationHistory": update.generationHistoryEntry };
+  }
+
+  const record = await this.findOneAndUpdate(
+    { _id: update.caseDocumentId, "sections.key": update.sectionKey },
+    updateQuery,
+    { new: true }
+  );
+  return record || null;
+}
+
+export async function getCaseDocumentByProjectId(
+  this: Model<ICaseDocumentModel>,
+  projectId: string
+): Promise<any> {
+  const record = await this.findOne({ projectId });
+  return record || null;
+}

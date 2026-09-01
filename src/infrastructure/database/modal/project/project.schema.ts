@@ -1,74 +1,74 @@
 import { Schema } from "mongoose";
-import { createProject, getAllProjects, getProjectById, updateProject } from "./project.statics";
+import { createProject, updateProject, transitionStatus, setCaseDocumentId, addAttachment, getAllProjects, getProjectById } from "./project.statics";
+
+const ProjectLocationSchema = new Schema({
+  country: String,
+  state: String,
+  city: String,
+  description: String,
+}, { _id: false });
+
+const ProjectCreditingPeriodSchema = new Schema({
+  start: Date,
+  end: Date,
+}, { _id: false });
 
 const ProjectSchema = new Schema({
-  uuid: String,
-  company_name: {
+  name: {
     type: String,
     required: true
   },
-  type: [{
+  proponentOrgId: {
     type: String,
     required: true
+  },
+  createdByUserId: {
+    type: String,
+    required: true
+  },
+  methodologyId: {
+    type: Schema.Types.ObjectId,
+    ref: 'methodology',
+  },
+  sector: {
+    type: String,
+    required: true
+  },
+  location: ProjectLocationSchema,
+  scale: {
+    type: String
+  },
+  startDate: {
+    type: Date
+  },
+  creditingPeriod: ProjectCreditingPeriodSchema,
+  status: {
+    type: String,
+    required: true,
+    default: 'DRAFT_INTAKE'
+  },
+  intake: {
+    type: Schema.Types.Mixed,
+    default: {}
+  },
+  attachments: [{
+    type: Schema.Types.ObjectId,
+    ref: 'source_document',
   }],
-  start_date:{
-    type: Date,
-    required: true
-  },
-  location: {
-    type: String,
-    required: true
-  },
-  duration: {
-    type: Number,
-    required: true
-  },
-  area: {
-    type: String,
-    required: true
-  },
-  section_a: {
+  caseDocumentId: {
     type: Schema.Types.ObjectId,
-    ref: 'projectSectionA'
+    ref: 'case_document',
   },
-  section_b: {
-    type: Schema.Types.ObjectId,
-    ref: 'projectSectionB'
-  },
-  section_c: {
-    type: Schema.Types.ObjectId,
-    ref: 'projectSectionC'
-  },
-  section_d: {
-    type: Schema.Types.ObjectId,
-    ref: 'projectSectionD'
-  },
-  section_e: {
-    type: Schema.Types.ObjectId,
-    ref: 'projectSectionE'
-  },
-  user_details: {
-    name: {
-      type: String,
-      required: false,
-    },
-    email: {
-      type: String,
-      required: false
-    },
-    uuid: {
-      type: String,
-      required: false
-    },
-    user_id: {
-      type: String,
-      required: false,
-    }
-  }
 }, { timestamps: true });
+
+ProjectSchema.index({ proponentOrgId: 1 });
+ProjectSchema.index({ createdByUserId: 1 });
 
 ProjectSchema.statics.createProject = createProject;
 ProjectSchema.statics.updateProject = updateProject;
+ProjectSchema.statics.transitionStatus = transitionStatus;
+ProjectSchema.statics.setCaseDocumentId = setCaseDocumentId;
+ProjectSchema.statics.addAttachment = addAttachment;
 ProjectSchema.statics.getAllProjects = getAllProjects;
 ProjectSchema.statics.getProjectById = getProjectById;
 

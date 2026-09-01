@@ -1,4 +1,5 @@
 node_modules/
+uploads/
 .vscode/
 dist/
 *.log

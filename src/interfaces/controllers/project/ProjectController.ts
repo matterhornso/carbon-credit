@@ -1,129 +1,234 @@
-import { MongoConnection } from '../../../infrastructure/database/MongoConnection'
-import { ProjectMongoConnection } from '../../../infrastructure/database/helper/database/Project'
 import { Response } from '../../response/Response'
-import * as fs from 'fs'
-import { Controller, Get, Route, Example, Post, Body, Header, Request, Query, Security } from "tsoa"
+import { Controller, Get, Route, Post, Body, Request, Query, Security } from "tsoa"
 import { ProjectRepository } from '../../database/ProjectRepository'
-import { ProjectSectionAUseCase, ProjectSectionBUseCase, ProjectSectionCUseCase, ProjectSectionDUseCase, ProjectSectionEUseCase, ProjectUseCase } from '../../../application/usecases/index';
-import { Project, ProjectSectionA, ProjectSectionB, ProjectSectionC, ProjectSectionD, ProjectSectionE } from '../../../domain'
-import { CreateProjectResponse } from '../ResponseInterface'
-import { ProjectSectionARepository } from '../../database/ProjectSectionARepository'
-import { ProjectSectionAMongoConnection } from '../../../infrastructure/database/helper/database/ProjectSectionA'
-import { ProjectSectionBRepository } from '../../database/ProjectSectionBRepository'
-import { ProjectSectionCRepository } from '../../database/ProjectSectionCRepository'
-import { ProjectSectionDRepository } from '../../database/ProjectSectionDRepository'
-import { ProjectSectionERepository } from '../../database/ProjectSectionERepository'
-import { ProjectSectionBMongoConnection } from '../../../infrastructure/database/helper/database/ProjectSectionB'
-import { ProjectSectionCMongoConnection } from '../../../infrastructure/database/helper/database/ProjectSectionC'
-import { ProjectSectionDMongoConnection } from '../../../infrastructure/database/helper/database/ProjectSectionD'
-import { ProjectSectionEMongoConnection } from '../../../infrastructure/database/helper/database/ProjectSectionE'
-import { IProjectInterface } from '../../../domain/project/projectInterface'
-import { ICreateProjectRequest } from '../RequestInterfaces'
-import { ActivityType } from '..'
+import { ProjectMongoConnection } from '../../../infrastructure/database/helper/database/Project'
+import { MethodologyRepository } from '../../database/MethodologyRepository'
+import { MethodologyMongoConnection } from '../../../infrastructure/database/helper/database/Methodology'
+import { CaseDocumentRepository } from '../../database/CaseDocumentRepository'
+import { CaseDocumentMongoConnection } from '../../../infrastructure/database/helper/database/CaseDocument'
+import { AuditEventRepository } from '../../database/AuditEventRepository'
+import { AuditEventMongoConnection } from '../../../infrastructure/database/helper/database/AuditEvent'
+import { ProjectUseCase, MethodologyUseCase, CaseDocumentUseCase, AuditEventUseCase } from '../../../application/usecases/index'
+import { Project, UpdateProject, CaseDocument, AuditEvent } from '../../../domain'
+import { PROJECT_STATUSES } from '../../../domain/project/projectStatus'
+import { assertValidTransition, assertIntakeComplete } from '../../../application/usecases/project_lifecycle/ProjectLifecycle'
+import { evaluateApplicability } from '../../../application/usecases/project_lifecycle/ApplicabilityEvaluator'
+import { ICreateProjectRequest, ISelectMethodologyRequest, ISubmitIntakeRequest, IProjectTransitionRequest } from '../RequestInterfaces'
 import { Util } from '../../utils/Util'
-import { ParallelHasher } from 'ts-md5/dist/parallel_hasher';
-import path from 'path'
-import CryptoJS from 'crypto-js'
-
 
 @Route('project')
 export class ProjectController extends Controller {
-  private projectResource: string = "project";
   private projectRepository: ProjectRepository;
-  private projectSectionARepository: ProjectSectionARepository;
-  private projectSectionBRepository: ProjectSectionBRepository;
-  private projectSectionCRepository: ProjectSectionCRepository;
-  private projectSectionDRepository: ProjectSectionDRepository;
-  private projectSectionERepository: ProjectSectionERepository;
+  private methodologyRepository: MethodologyRepository;
+  private caseDocumentRepository: CaseDocumentRepository;
+  private auditEventRepository: AuditEventRepository;
+
   constructor() {
     super();
     this.projectRepository = new ProjectRepository(new ProjectMongoConnection())
-    this.projectSectionARepository = new ProjectSectionARepository(new ProjectSectionAMongoConnection())
-    this.projectSectionBRepository = new ProjectSectionBRepository(new ProjectSectionBMongoConnection())
-    this.projectSectionCRepository = new ProjectSectionCRepository(new ProjectSectionCMongoConnection())
-    this.projectSectionDRepository = new ProjectSectionDRepository(new ProjectSectionDMongoConnection())
-    this.projectSectionERepository = new ProjectSectionERepository(new ProjectSectionEMongoConnection())
-
+    this.methodologyRepository = new MethodologyRepository(new MethodologyMongoConnection())
+    this.caseDocumentRepository = new CaseDocumentRepository(new CaseDocumentMongoConnection())
+    this.auditEventRepository = new AuditEventRepository(new AuditEventMongoConnection())
   }
+
+  private async recordAuditEvent(request: any, projectId: string, eventType: string, before?: any, after?: any) {
+    let _user: any = await new Util().getUserInfo(request.user);
+    let _department: any = await new Util().getDepartmentInfo(request.user);
+    const auditEvent_useCase = new AuditEventUseCase(this.auditEventRepository);
+    await new AuditEvent().record({
+      projectId,
+      actorUserId: _user._id,
+      actorRole: (_department?.roles || []).join(',') || 'UNKNOWN',
+      eventType,
+      before,
+      after,
+    }, auditEvent_useCase);
+  }
+
   @Security("jwt")
   @Post("create")
   async create(@Body() data: ICreateProjectRequest, @Request() request: any) {
-    let _user: any = await new Util().getUserInfo(request.user);
-    // TODO handle permission not found
-    let user_shine_name = _user.shineName;
-    let user_public_key = _user.shineKey;
-    //let refiner = _user._id;
-    let organization_id = _user.departmentId.organization_id;
+    try {
+      let _user: any = await new Util().getUserInfo(request.user);
+      let _department: any = await new Util().getDepartmentInfo(request.user);
 
-    let _department: any = await new Util().getDepartmentInfo(request.user);
+      const project_useCase = new ProjectUseCase(this.projectRepository);
+      let project_res: any = await new Project().create({
+        name: data.name,
+        sector: data.sector,
+        proponentOrgId: _department._id,
+        createdByUserId: _user._id,
+      }, project_useCase);
 
-    let action: string = ActivityType.CREATE;
-    let isOwnerOrMember: boolean = true;
-    let resource: string = _department._id + ":" + this.projectResource;
+      await this.recordAuditEvent(request, project_res._id, 'PROJECT_CREATED', undefined, { name: data.name, sector: data.sector, status: project_res.status });
 
-    let hasPermission: boolean = await new Util().hasPermission(request.user, isOwnerOrMember, action, _department.roles, resource);
-
-    if (hasPermission != true) {
-      this.setStatus(400);
-      return new Response().sendResponseFailure("User Not Authorized", false);
-    }
-    const project_useCase = new ProjectUseCase(this.projectRepository);
-    const project_sectiona_useCase = new ProjectSectionAUseCase(this.projectSectionARepository);
-    const project_sectionb_useCase = new ProjectSectionBUseCase(this.projectSectionBRepository);
-    const project_sectionc_useCase = new ProjectSectionCUseCase(this.projectSectionCRepository);
-    const project_sectiond_useCase = new ProjectSectionDUseCase(this.projectSectionDRepository);
-    const project_sectione_useCase = new ProjectSectionEUseCase(this.projectSectionERepository);
-    let user = { name: _user.fullName, email: _user.email, uuid: _user.uuid, user_id: _user._id }
-    let project_res: any = await new Project().create({ ...data, ...user }, project_useCase);
-    if (project_res) {
-      let res_body = new CreateProjectResponse();
-      res_body.uuid = project_res.uuid;
-      let uuid = { project_id: project_res.uuid }
-      let sectionA = await new ProjectSectionA().create(uuid, project_sectiona_useCase);
-      let sectionB = await new ProjectSectionB().create(uuid, project_sectionb_useCase);
-      let sectionC = await new ProjectSectionC().create(uuid, project_sectionc_useCase);
-      let sectionD = await new ProjectSectionD().create(uuid, project_sectiond_useCase);
-      let sectionE = await new ProjectSectionE().create(uuid, project_sectione_useCase);
-      console.log(sectionA, sectionB, sectionC, sectionD, sectionE, "sectiona")
-      if (sectionA && sectionB && sectionC && sectionD && sectionE) {
-        let updateProject = await new Project().update({
-          uuid: project_res.uuid, section_a: sectionA._id, section_b: sectionB._id,
-          section_c: sectionC._id, section_d: sectionD._id, section_e: sectionE._id
-        }, project_useCase)
-        console.log(updateProject)
-      }
-      return new Response().sendResponseSuccess(res_body, true);
-    } else {
-      return new Response().sendResponseFailure("something went wrong ", false);
+      return new Response().sendResponseSuccess(project_res, true);
+    } catch (Error) {
+      this.setStatus(500);
+      return new Response().sendResponseFailure("Something went wrong " + Error, false);
     }
   }
 
-  @Example({
-    "success": true,
-    "error": [],
-    "data": {
+  // Selecting a methodology creates the project's CaseDocument (one entry
+  // per Methodology.sectionGuidance section) and transitions DRAFT_INTAKE ->
+  // METHODOLOGY_SELECTED. Re-selecting while already in METHODOLOGY_SELECTED
+  // (before intake is submitted) is allowed and does not re-transition —
+  // it just swaps the methodology and rebuilds the CaseDocument shape.
+  @Security("jwt")
+  @Post("selectMethodology")
+  async selectMethodology(@Body() data: ISelectMethodologyRequest, @Request() request: any) {
+    try {
+      const project_useCase = new ProjectUseCase(this.projectRepository);
+      const methodology_useCase = new MethodologyUseCase(this.methodologyRepository);
+      const caseDocument_useCase = new CaseDocumentUseCase(this.caseDocumentRepository);
+
+      const project: any = await project_useCase.getProjectById(data.projectId);
+      if (!project) {
+        this.setStatus(404);
+        return new Response().sendResponseFailure("Project not found", false);
+      }
+
+      const methodology: any = await methodology_useCase.getMethodologyById(data.methodologyId);
+      if (!methodology) {
+        this.setStatus(404);
+        return new Response().sendResponseFailure("Methodology not found", false);
+      }
+      if (methodology.sector !== project.sector) {
+        this.setStatus(400);
+        return new Response().sendResponseFailure("Methodology sector does not match project sector", false);
+      }
+
+      const isFirstSelection = project.status === PROJECT_STATUSES.DRAFT_INTAKE;
+      if (isFirstSelection) {
+        assertValidTransition(project.status, PROJECT_STATUSES.METHODOLOGY_SELECTED);
+      } else if (project.status !== PROJECT_STATUSES.METHODOLOGY_SELECTED) {
+        this.setStatus(400);
+        return new Response().sendResponseFailure(`Cannot select methodology from status '${project.status}'`, false);
+      }
+
+      const methodologyChanged = String(project.methodologyId?._id || project.methodologyId || '') !== data.methodologyId;
+      if (!project.caseDocumentId || methodologyChanged) {
+        const sectionKeys = (methodology.sectionGuidance || []).map((guidance: any) => guidance.section);
+        const caseDocument: any = await new CaseDocument().create({ projectId: data.projectId, sectionKeys }, caseDocument_useCase);
+        await this.projectRepository.setCaseDocumentId(data.projectId, caseDocument._id);
+      }
+
+      await this.projectRepository.updateProject(new UpdateProject({ id: data.projectId, methodologyId: data.methodologyId }));
+      const updated = isFirstSelection
+        ? await this.projectRepository.transitionStatus(data.projectId, PROJECT_STATUSES.METHODOLOGY_SELECTED)
+        : await project_useCase.getProjectById(data.projectId);
+
+      await this.recordAuditEvent(request, data.projectId, 'METHODOLOGY_SELECTED', { methodologyId: project.methodologyId }, { methodologyId: data.methodologyId });
+
+      return new Response().sendResponseSuccess(updated, true);
+    } catch (Error) {
+      this.setStatus(500);
+      return new Response().sendResponseFailure("Something went wrong " + Error, false);
     }
-  })
+  }
+
+  @Security("jwt")
+  @Post("submitIntake")
+  async submitIntake(@Body() data: ISubmitIntakeRequest, @Request() request: any) {
+    try {
+      const project_useCase = new ProjectUseCase(this.projectRepository);
+      const methodology_useCase = new MethodologyUseCase(this.methodologyRepository);
+
+      const project: any = await project_useCase.getProjectById(data.projectId);
+      if (!project) {
+        this.setStatus(404);
+        return new Response().sendResponseFailure("Project not found", false);
+      }
+      if (!project.methodologyId) {
+        this.setStatus(400);
+        return new Response().sendResponseFailure("Select a methodology before submitting intake", false);
+      }
+
+      const methodologyId = project.methodologyId._id || project.methodologyId;
+      const methodology: any = await methodology_useCase.getMethodologyById(String(methodologyId));
+      assertIntakeComplete(methodology?.requiredInputs || [], data.intake);
+      assertValidTransition(project.status, PROJECT_STATUSES.INPUTS_SUBMITTED);
+
+      await this.projectRepository.updateProject(new UpdateProject({ id: data.projectId, intake: data.intake }));
+      const updated = await this.projectRepository.transitionStatus(data.projectId, PROJECT_STATUSES.INPUTS_SUBMITTED);
+
+      await this.recordAuditEvent(request, data.projectId, 'INTAKE_SUBMITTED', undefined, { intake: data.intake });
+
+      return new Response().sendResponseSuccess(updated, true);
+    } catch (error: any) {
+      this.setStatus(400);
+      return new Response().sendResponseFailure(error?.message || "Something went wrong", false);
+    }
+  }
+
+  @Get("checkApplicability")
+  @Security("jwt")
+  async checkApplicability(@Request() request: any, @Query() projectId: string) {
+    try {
+      const project_useCase = new ProjectUseCase(this.projectRepository);
+      const methodology_useCase = new MethodologyUseCase(this.methodologyRepository);
+
+      const project: any = await project_useCase.getProjectById(projectId);
+      if (!project || !project.methodologyId) {
+        this.setStatus(400);
+        return new Response().sendResponseFailure("Project or methodology not found", false);
+      }
+      const methodologyId = project.methodologyId._id || project.methodologyId;
+      const methodology: any = await methodology_useCase.getMethodologyById(String(methodologyId));
+      const evaluation = evaluateApplicability(methodology?.applicabilityConditions || [], project.intake || {});
+      return new Response().sendResponseSuccess(evaluation, true);
+    } catch (Error) {
+      this.setStatus(500);
+      return new Response().sendResponseFailure("Something went wrong " + Error, false);
+    }
+  }
+
+  // General-purpose status advance/rewind, guarded by the state machine.
+  // ISSUER_FINALIZED additionally requires every CaseDocument section to
+  // have left 'not_started'. CASE_GENERATING -> CASE_DRAFT_READY is not
+  // reachable here — the generation usecase (Phase 1 sub-milestone 3) drives
+  // that transition itself once drafting completes.
+  @Security("jwt")
+  @Post("transition")
+  async transition(@Body() data: IProjectTransitionRequest, @Request() request: any) {
+    try {
+      const project_useCase = new ProjectUseCase(this.projectRepository);
+      const caseDocument_useCase = new CaseDocumentUseCase(this.caseDocumentRepository);
+
+      const project: any = await project_useCase.getProjectById(data.projectId);
+      if (!project) {
+        this.setStatus(404);
+        return new Response().sendResponseFailure("Project not found", false);
+      }
+
+      assertValidTransition(project.status, data.toStatus);
+
+      if (data.toStatus === PROJECT_STATUSES.ISSUER_FINALIZED) {
+        const caseDocument: any = project.caseDocumentId
+          ? await caseDocument_useCase.getCaseDocumentByProjectId(data.projectId)
+          : null;
+        const incomplete = !caseDocument || (caseDocument.sections || []).some((section: any) => section.status === 'not_started');
+        if (incomplete) {
+          this.setStatus(400);
+          return new Response().sendResponseFailure("All case sections must be drafted before finalizing", false);
+        }
+      }
+
+      const updated = await this.projectRepository.transitionStatus(data.projectId, data.toStatus);
+
+      await this.recordAuditEvent(request, data.projectId, 'STATUS_TRANSITION', { status: project.status }, { status: data.toStatus });
+
+      return new Response().sendResponseSuccess(updated, true);
+    } catch (error: any) {
+      this.setStatus(400);
+      return new Response().sendResponseFailure(error?.message || "Something went wrong", false);
+    }
+  }
+
   @Get("getProjectById")
   @Security("jwt")
   async getProjectById(@Request() request: any, @Query() id: string) {
     try {
-      // let _user: any = await new Util().getUserInfo(request.user);
-      // // TODO handle permission not found
-      // let user_shine_name = _user.shineName;
-      // let user_public_key = _user.shineKey;
-      // let organization_id = _user.departmentId.organization_id;
-      // let _department: any = await new Util().getDepartmentInfo(request.user);
-      // let action: string = ActivityType.READ;
-      // let isOwnerOrMember: boolean = true;
-      // let resource: string = _department._id + ":" + this.projectResource;
-      // // console.log('resource', resource)
-      // let hasPermission: boolean = await new Util().hasPermission(request.user, isOwnerOrMember, action, _department.roles, resource);
-      // if (hasPermission != true) {
-      //   this.setStatus(400);
-      //   return new Response().sendResponseFailure("User Not Authorized", false);
-      // }
-
       const project_useCase = new ProjectUseCase(this.projectRepository);
       let result = await project_useCase.getProjectById(id)
       return new Response().sendResponseSuccess(result, true);
@@ -133,51 +238,15 @@ export class ProjectController extends Controller {
     }
   }
 
-
-  /**
-   * * get all companies
-   * */
-  @Example({
-    "success": true,
-    "error": [],
-    "data": {
-    }
-  })
+  // Scoped to the caller's own department — the prior version trusted a
+  // caller-supplied user_id query param with no auth check at all.
   @Get("getAllProjects")
-  //@Security("jwt")
-  async getAllProjects(@Request() request: any, @Query() user_id?: string) {
+  @Security("jwt")
+  async getAllProjects(@Request() request: any, @Query() status?: string) {
     try {
-      // //console.log('sourcing', sourcing)
-      // let _user: any = await new Util().getUserInfo(request.user);
-      // // TODO handle permission not found
-      // let _department: any = await new Util().getDepartmentInfo(request.user);
-      // let action: string = ActivityType.READ;
-      // let isOwnerOrMember: boolean = true;
-      // let resource: string = _department._id + ":" + this.projectResource;
-      // console.log('resource', resource)
-      // let hasPermission: boolean = await new Util().hasPermission(request.user, isOwnerOrMember, action, _department.roles, resource);
-      // if (hasPermission != true) {
-      //   this.setStatus(400);
-      //   return new Response().sendResponseFailure("User Not Authorized", false);
-      // }
-      let filter: any = {}
-      if (user_id) {
-        filter["user_id"] = user_id
-      }
+      let _department: any = await new Util().getDepartmentInfo(request.user);
       const project_useCase = new ProjectUseCase(this.projectRepository);
-      let result = await project_useCase.getAllProjects(filter)
-      // const dirContents = fs.readdirSync(__dirname);
-      // console.log(dirContents);
-
-      // const fileContents = fs.readFileSync(
-      //   path.join(__dirname, './../ResponseInterface.js'),
-      //   {
-      //     encoding: 'utf-8',
-      //   },
-      // );
-      // const hashSum = CryptoJS.HmacMD5(fileContents,"123");
-
-      // console.log(hashSum.toString(), "hashhhhhh")
+      let result = await project_useCase.getAllProjects({ proponentOrgId: _department._id, status })
       return new Response().sendResponseSuccess(result, true);
     } catch (Error) {
       this.setStatus(500);

@@ -11,12 +11,8 @@ describe('Project Controller', () => {
 
   it("/api/v1/project/create", async () => {
     let payload: ICreateProjectRequest = {
-      company_name: "test_company",
-      start_date: new Date(),
-      type: "project_type",
-      location: "Banglore",
-      duration: 1223,
-      area: "BTM"
+      name: "test_project",
+      sector: "AFOLU",
     }
     try {
       console.log("payload")

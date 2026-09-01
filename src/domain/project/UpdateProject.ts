@@ -1,26 +1,26 @@
+import { IProjectInterface, IProjectLocation, IProjectCreditingPeriod } from './projectInterface';
 
-import { IProjectInterface } from './projectInterface';
-import { v4 as generateUUID } from 'uuid';
-import { Types } from 'mongoose';
+// Covers the fields a caller may change directly. `status` is deliberately
+// excluded — status changes always go through the lifecycle transition
+// guard (assertValidTransition), never a raw field update, since they carry
+// preconditions a generic update would bypass.
+export class UpdateProject {
+  id!: string;
+  methodologyId?: string;
+  location?: IProjectLocation;
+  scale?: string;
+  startDate?: Date;
+  creditingPeriod?: IProjectCreditingPeriod;
+  intake?: Record<string, any>;
 
-export class UpdateProject implements IProjectInterface {
-  uuid?: string;
-  section_a: Types.ObjectId;
-  section_b!: Types.ObjectId;
-  section_c!: Types.ObjectId;
-  section_d!: Types.ObjectId;
-  section_e!: Types.ObjectId;
-  constructor(project: IProjectInterface) {
-    if (!project.section_a) throw new Error('section_a missing!');
-    if (!project.section_b) throw new Error('section_b missing!');
-    if (!project.section_c) throw new Error('section_c missing!');
-    if (!project.section_d) throw new Error('section_d missing!');
-    if (!project.section_e) throw new Error('section_e missing!');
-    this.uuid = project.uuid;
-    this.section_a = project.section_a;
-    this.section_b = project.section_b;
-    this.section_c = project.section_c;
-    this.section_d = project.section_d;
-    this.section_e = project.section_e;
+  constructor(data: { id: string } & IProjectInterface) {
+    if (!data.id) throw new Error('id missing!');
+    this.id = data.id;
+    this.methodologyId = data.methodologyId;
+    this.location = data.location;
+    this.scale = data.scale;
+    this.startDate = data.startDate;
+    this.creditingPeriod = data.creditingPeriod;
+    this.intake = data.intake;
   }
 }

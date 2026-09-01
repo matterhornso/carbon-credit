@@ -20,3 +20,15 @@ export { ProjectSectionD } from "./project_section_d/ProjectSectionD";
 
 export { CreateProjectSectionE } from "./project_section_e/CreateProjectSectionE";
 export { ProjectSectionE } from "./project_section_e/ProjectSectionE";
+
+export { CreateMethodology } from "./methodology/CreateMethodology";
+export { Methodology } from "./methodology/Methodology";
+
+export { CreateCaseDocument } from "./case_document/CreateCaseDocument";
+export { CaseDocument } from "./case_document/CaseDocument";
+
+export { CreateSourceDocument } from "./source_document/CreateSourceDocument";
+export { SourceDocument } from "./source_document/SourceDocument";
+
+export { CreateAuditEvent } from "./audit_event/CreateAuditEvent";
+export { AuditEvent } from "./audit_event/AuditEvent";
