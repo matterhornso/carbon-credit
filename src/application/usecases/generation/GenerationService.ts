@@ -135,7 +135,15 @@ export class GenerationService {
   async refineSection(projectId: string, sectionKey: string, userMessage: string, actor: IGenerationActor): Promise<ICaseDocumentInterface> {
     const context = await this.loadContext(projectId, sectionKey);
     const guidance = this.resolveGuidance(context.methodology, sectionKey);
-    if (guidance.contentType !== 'narrative') {
+    // additionality/baseline_scenario are generated through their own typed
+    // branches whatever sectionGuidance declares, so their stored content is
+    // structured ({tiers,...} / {variables, formulaApplied,...}). Both are in
+    // fact seeded as contentType 'narrative', so guidance alone would let a
+    // refine through and flatten that structure to {text, citations} —
+    // silently dropping the tiers or variables a reviewer needs. The UI never
+    // offers refine for them; this closes the same path via direct API call.
+    const isFixedShape = (Object.values(FIXED_SHAPE_SECTIONS) as string[]).includes(sectionKey);
+    if (isFixedShape || guidance.contentType !== 'narrative') {
       throw new Error(`Section '${sectionKey}' is not a narrative section — regenerate it instead of refining`);
     }
 
