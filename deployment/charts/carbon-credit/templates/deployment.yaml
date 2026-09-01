@@ -44,24 +44,27 @@ spec:
             - name: http
               containerPort: {{ .Values.containers.port }}
               protocol: TCP
-          # livenessProbe:
-          #   httpGet:
-          #     path: /liveness
-          #     port: {{ .Values.containers.port }}
-          #   initialDelaySeconds: 30
-          #   periodSeconds: 10
-          #   timeoutSeconds: 5
-          #   successThreshold: 1
-          #   failureThreshold: 3
-          # readinessProbe:
-          #   httpGet:
-          #     path: /readiness
-          #     port: {{ .Values.containers.port }}
-          #   initialDelaySeconds: 30
-          #   periodSeconds: 10
-          #   timeoutSeconds: 5
-          #   successThreshold: 3
-          #   failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: {{ .Values.containers.port }}
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: {{ .Values.containers.port }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.containers.port }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           env:

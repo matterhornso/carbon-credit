@@ -12,12 +12,12 @@
     "copy-static-assets": "ts-node copyStaticAssets.ts",
     "dev": "npm run build && concurrently \"nodemon --inspect\" \"nodemon -x tsoa spec-and-routes\"",
     "start": "npm run clean && npm run build && node dist/src/infrastructure/server.js",
-    "postinstall": "typings install",
     "build:routes": "mkdir -p src/infrastructure/routes && tsoa routes",
     "build:swagger": "mkdir -p api && mkdir -p api/dist && tsoa swagger",
     "build:all": "npm run build:routes && npm run build:swagger",
     "start-local": "ENVIRONMENT=local npm start ",
     "start-test": "ENVIRONMENT=test npm start && npm run test ",
+    "seed:methodology": "ts-node src/infrastructure/database/seed/methodology.seed.ts",
     "prepare": "husky install"
   },
   "author": "amit maurya",
@@ -52,6 +52,7 @@
     "multer-sftp": "^1.1.1",
     "node-fetch": "^2.6.7",
     "on-finished": "^2.3.0",
+    "pdf-parse": "^1.1.4",
     "prom-client": "^13.1.0",
     "q": "^1.5.1",
     "queue": "^6.0.2",
@@ -81,6 +82,7 @@
     "@types/multer": "^1.4.4",
     "@types/node": "^14.0.5",
     "@types/on-finished": "^2.3.1",
+    "@types/pdf-parse": "^1.1.5",
     "@types/q": "^1.5.4",
     "@types/shelljs": "^0.8.8",
     "@types/ssh2-sftp-client": "^7.0.0",
@@ -93,7 +95,6 @@
     "nodemon": "^2.0.4",
     "shelljs": "^0.8.5",
     "ts-node": "^8.10.2",
-    "typescript": "^4.6.3",
-    "typings": "^2.1.1"
+    "typescript": "^4.6.3"
   }
 }

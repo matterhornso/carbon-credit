@@ -49,7 +49,7 @@ container: &build_default
 container:main:
   <<: *build_default
   only:
-    - master
+    - main
   script:
     - |
       docker --config ./ tag $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8} \
@@ -239,7 +239,7 @@ deploy_production:
       --values deployment/charts/config/values-${CI_ENVIRONMENT_NAME}.yaml
       --debug
   only:
-    - master
+    - main
   dependencies:
     - deploy_staging
   when: manual
@@ -267,7 +267,7 @@ destroy_production:
       --values deployment/charts/config/values-${CI_ENVIRONMENT_NAME}.yaml
       --debug
   only:
-    - master
+    - main
   dependencies:
     - deploy_production
   when: manual

@@ -44,3 +44,13 @@ autoscaling:
 
 podAntiAffinity:
   enabled: true
+
+# Requests are required for HPA utilization targets to compute at all.
+# Limits are generous because `npm start` compiles TypeScript at container start;
+# lower them once the build moves into the image.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
