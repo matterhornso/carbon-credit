@@ -100,10 +100,15 @@ export class AttachmentController extends Controller {
       await this.projectRepository.addAttachment(projectId, created._id);
 
       const extraction = await extractText(file.buffer, file.mimetype);
+      // Parsing successfully is not the same as producing evidence. A scanned
+      // PDF reads fine and yields nothing, and buildSourceExcerpts drops any
+      // document with no text — so marking that 'processed' would leave the
+      // customer believing they supplied something no section can ever cite.
+      const usable = extraction.supported && extraction.text.trim().length > 0;
       const finalDoc = await this.sourceDocumentRepository.updateExtractedText(
         String(created._id),
         extraction.text,
-        extraction.supported ? 'processed' : 'failed'
+        usable ? 'processed' : 'failed'
       );
 
       const auditEvent_useCase = new AuditEventUseCase(this.auditEventRepository);
@@ -112,13 +117,20 @@ export class AttachmentController extends Controller {
         actorUserId: actor.userId,
         actorRole: actor.role,
         eventType: 'SOURCE_DOCUMENT_UPLOADED',
-        after: { filename: file.originalname, mimeType: file.mimetype, sizeBytes: uploadResult.sizeBytes, textExtracted: extraction.supported },
+        after: {
+          filename: file.originalname,
+          mimeType: file.mimetype,
+          sizeBytes: uploadResult.sizeBytes,
+          textExtracted: usable,
+          extractedChars: extraction.text.trim().length,
+          extractionIssue: usable ? undefined : extraction.reason,
+        },
       }, auditEvent_useCase);
 
-      if (!extraction.supported) {
+      if (!usable) {
         return new Response().sendResponseSuccess({
           ...finalDoc,
-          _warning: `Text extraction is not supported for ${file.mimetype} yet — the file is stored and linked to the project, but generation won't be able to cite it until extraction is added for this format.`,
+          _warning: `${extraction.reason || 'No text could be read from this file.'} The file is stored and linked to the project, but generation will not be able to cite it.`,
         }, true);
       }
 

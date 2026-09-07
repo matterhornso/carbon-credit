@@ -148,10 +148,16 @@ cmd_up() {
     SHINE_BLOCKCHAIN=http://localhost:9999
 
   # auth-service — ENVIRONMENT=dev (NO 'test' branch in its MongoConnection).
+  # USER_SERVICE_URL carries the /user prefix but ROLE_SERVICE_URL does not,
+  # because auth-service's own call sites are inconsistent: User.service.ts
+  # builds "<url>/api/v1/users/..." with no service segment, while
+  # Role.service.ts builds "<url>/rbac/api/v1/..." with one. A single base URL
+  # cannot satisfy both, which is a sharper form of Bug B than "everything
+  # assumes a gateway" — see AGENT_BUILD_LOG.md.
   start_service auth-service auth-service $PORT_AUTH \
     ENVIRONMENT=dev MONGODB_URI= MONGODB_HOST=mongodb://localhost \
     MONGODB_PORT=$PORT_MONGO DB_NAME=auth_local PORT=$PORT_AUTH \
-    USER_SERVICE_URL=$GW ROLE_SERVICE_URL=$GW \
+    USER_SERVICE_URL=$GW/user ROLE_SERVICE_URL=$GW \
     NOTIFICATION_SERVICE_URL=http://localhost:3606 \
     JWT_SECRET=local-dev-secret-not-for-prod \
     AUTH_DEV_OTP=12121
