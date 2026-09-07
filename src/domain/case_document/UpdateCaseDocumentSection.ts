@@ -7,6 +7,7 @@ export class UpdateCaseDocumentSection {
   generationHistoryEntry?: { prompt: string; response: string; model: string };
   lastEditedByUserId?: string;
   warnings?: string[];
+  lastError?: string | null;
 
   constructor(data: {
     caseDocumentId: string;
@@ -17,6 +18,7 @@ export class UpdateCaseDocumentSection {
     generationHistoryEntry?: { prompt: string; response: string; model: string };
     lastEditedByUserId?: string;
     warnings?: string[];
+    lastError?: string | null;
   }) {
     if (!data.caseDocumentId) throw new Error('caseDocumentId missing!');
     if (!data.sectionKey) throw new Error('sectionKey missing!');
@@ -28,5 +30,6 @@ export class UpdateCaseDocumentSection {
     this.generationHistoryEntry = data.generationHistoryEntry;
     this.lastEditedByUserId = data.lastEditedByUserId;
     this.warnings = data.warnings;
+    this.lastError = data.lastError;
   }
 }

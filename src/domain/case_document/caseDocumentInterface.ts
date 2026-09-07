@@ -11,7 +11,7 @@ export interface ICaseDocumentInterface {
 
 export interface ICaseSection {
   key: string;
-  status: string; // 'not_started' | 'ai_drafting' | 'draft_ready' | 'user_edited' | 'finalized'
+  status: string; // 'not_started' | 'ai_drafting' | 'draft_ready' | 'user_edited' | 'finalized' | 'generation_failed'
   content?: any;
   sourceCitations?: string[];
   generationHistory?: IGenerationEvent[];
@@ -20,6 +20,10 @@ export interface ICaseSection {
   // Contradiction-detection findings (uploaded source vs. structured intake)
   // surfaced separately from citations so the UI can flag them distinctly.
   warnings?: string[];
+  // Failure reason from the last generation attempt, null once it succeeds.
+  // Distinct from warnings: a warning is something the model found in the
+  // project, this is something that went wrong producing the section.
+  lastError?: string | null;
 }
 
 export interface IGenerationEvent {

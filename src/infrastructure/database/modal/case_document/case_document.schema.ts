@@ -16,6 +16,10 @@ const CaseSectionSchema = new Schema({
   lastEditedByUserId: { type: String },
   lastEditedAt: { type: Date },
   warnings: [{ type: String }],
+  // Why the last generation attempt failed, cleared on the next success. A
+  // section that failed unattended has to be able to say so without a human
+  // reading a server log.
+  lastError: { type: String, default: null },
 }, { _id: false });
 
 const CaseDocumentSchema = new Schema({

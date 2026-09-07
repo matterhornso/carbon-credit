@@ -67,12 +67,19 @@ export class GenerationController extends Controller {
   // once done. This is a long-running call (multiple sequential LLM
   // requests) — the frontend should show progress, not treat this as
   // instant.
+  //
+  // A section that fails does not abort the run: it is recorded on the
+  // section and the project stays in CASE_GENERATING, so the caller can
+  // retry with onlyMissing to fill the gaps without paying for the
+  // sections that already succeeded.
   @Security("jwt")
   @Post("generateAll")
   async generateAll(@Body() data: IGenerateAllSectionsRequest, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
-      const result = await this.generationService.generateAllSections(data.projectId, actor);
+      const result = await this.generationService.generateAllSections(data.projectId, actor, {
+        onlyMissing: data.onlyMissing === true,
+      });
       return new Response().sendResponseSuccess(result, true);
     } catch (error: any) {
       this.setStatus(400);

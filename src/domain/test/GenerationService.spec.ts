@@ -47,22 +47,25 @@ class FakeCaseDocumentRepository {
   public writtenSectionKeys: string[] = [];
   constructor(public caseDocument: any) {}
   async getCaseDocumentByProjectId(_projectId: string) { return this.caseDocument; }
+  // Mirrors the real mongo statics: only fields actually present on the update
+  // are written, so an update that omits content leaves existing content alone.
   async updateSection(update: any) {
     this.writtenSectionKeys.push(update.sectionKey);
     const sections = this.caseDocument.sections || (this.caseDocument.sections = []);
-    const existing = sections.find((s: any) => s.key === update.sectionKey);
-    const next = {
-      key: update.sectionKey,
-      status: update.status,
-      content: update.content,
-      sourceCitations: update.sourceCitations,
-      warnings: update.warnings,
-      generationHistory: [
-        ...((existing && existing.generationHistory) || []),
-        ...(update.generationHistoryEntry ? [update.generationHistoryEntry] : []),
-      ],
-    };
-    if (existing) Object.assign(existing, next); else sections.push(next);
+    let existing = sections.find((s: any) => s.key === update.sectionKey);
+    if (!existing) {
+      existing = { key: update.sectionKey, status: 'not_started', generationHistory: [] };
+      sections.push(existing);
+    }
+    if (update.status) existing.status = update.status;
+    if (update.content !== undefined) existing.content = update.content;
+    if (update.sourceCitations) existing.sourceCitations = update.sourceCitations;
+    if (update.warnings !== undefined) existing.warnings = update.warnings;
+    if (update.lastError !== undefined) existing.lastError = update.lastError;
+    if (update.lastEditedByUserId) existing.lastEditedByUserId = update.lastEditedByUserId;
+    if (update.generationHistoryEntry) {
+      existing.generationHistory = [...(existing.generationHistory || []), update.generationHistoryEntry];
+    }
     return this.caseDocument;
   }
   async createCaseDocument(): Promise<any> { throw new Error('not used'); }
@@ -100,8 +103,15 @@ class FakeLLMService extends LLMService {
       contradictions?: string[];
       failContradictionCheck?: boolean;
       citationSourceDetail?: string;
+      failSections?: string[];
     } = {}
   ) { super(); }
+
+  // Generic structured and narrative prompts both carry a "SECTION: <key>"
+  // line, which is how a test targets one section for failure.
+  private shouldFail(prompt: string): string | undefined {
+    return (this.opts.failSections || []).find((k) => prompt.includes(`SECTION: ${k}`));
+  }
 
   private isContradictionCheck(messages: LLMMessage[]): boolean {
     return messages[0].content.startsWith('You check for direct factual contradictions');
@@ -115,6 +125,8 @@ class FakeLLMService extends LLMService {
     }
     const detail = this.opts.citationSourceDetail || 'SRC-1';
     const prompt = messages[messages.length - 1].content;
+    const failing = this.shouldFail(prompt);
+    if (failing) throw new Error(`LLM API error 429: rate limited on ${failing}`);
     // Dispatch on the JSON schema the service actually demands, not on loose
     // keywords — 'baseline' appears in several unrelated section prompts.
     if (prompt.includes('"overallAssessment"')) {
@@ -141,8 +153,10 @@ class FakeLLMService extends LLMService {
     } as unknown as T;
   }
 
-  async chatCompletion(_messages: LLMMessage[]): Promise<LLMResult> {
+  async chatCompletion(messages: LLMMessage[]): Promise<LLMResult> {
     this.chatCalls++;
+    const failing = this.shouldFail(messages[messages.length - 1].content);
+    if (failing) throw new Error(`LLM API error 429: rate limited on ${failing}`);
     const detail = this.opts.citationSourceDetail || 'SRC-1';
     return {
       content: `Some narrative prose.\nCITATION | a claim | source_document | ${detail}`,
@@ -414,6 +428,110 @@ describe('Test GenerationService orchestration', () => {
 
       // One structured call for the section itself, none for contradictions.
       expect(llm.structuredCalls).equals(1);
+    });
+
+  });
+
+  describe('partial failure and resume', () => {
+
+    // The scenario that motivated all of this: a rate limit part-way through a
+    // ten-section run. Previously the whole call threw, the project was left in
+    // CASE_GENERATING with no record of why, and a retry re-billed every
+    // section that had already succeeded.
+    it('completes the remaining sections when one fails', async () => {
+      const { service, caseDocumentRepository } = buildHarness({
+        llm: new FakeLLMService({ failSections: ['crediting'] }),
+      });
+      await service.generateAllSections(PROJECT_ID, ACTOR);
+
+      const declared = VM0047_CENSUS_BASED.sectionGuidance!.map((g) => g.section);
+      const written = caseDocumentRepository.writtenSectionKeys;
+      expect(written).to.include('crediting');
+      declared.filter((k) => k !== 'crediting').forEach((k) => {
+        expect(written, `${k} should still have been generated`).to.include(k);
+      });
+    });
+
+    it('does not claim the case is ready when a section failed', async () => {
+      const { service, projectRepository } = buildHarness({
+        llm: new FakeLLMService({ failSections: ['crediting'] }),
+      });
+      await service.generateAllSections(PROJECT_ID, ACTOR);
+
+      expect(projectRepository.transitions).deep.equals([PROJECT_STATUSES.CASE_GENERATING]);
+      expect(projectRepository.project.status).equals(PROJECT_STATUSES.CASE_GENERATING);
+    });
+
+    it('records the failure on the section rather than only in a log', async () => {
+      const { service, caseDocumentRepository } = buildHarness({
+        llm: new FakeLLMService({ failSections: ['crediting'] }),
+      });
+      await service.generateAllSections(PROJECT_ID, ACTOR);
+
+      const section = caseDocumentRepository.caseDocument.sections.find((s: any) => s.key === 'crediting');
+      expect(section.status).equals('generation_failed');
+      expect(section.lastError).to.match(/429/);
+    });
+
+    it('keeps an existing draft intact when a regeneration fails', async () => {
+      const { service, caseDocumentRepository } = buildHarness({
+        sections: [{ key: 'crediting', status: 'draft_ready', content: { summary: 'earlier good draft' } }],
+        llm: new FakeLLMService({ failSections: ['crediting'] }),
+      });
+      await service.generateAllSections(PROJECT_ID, ACTOR);
+
+      const section = caseDocumentRepository.caseDocument.sections.find((s: any) => s.key === 'crediting');
+      expect(section.content).deep.equals({ summary: 'earlier good draft' });
+      expect(section.status).equals('draft_ready');
+      expect(section.lastError, 'the failure is still recorded').to.match(/429/);
+    });
+
+    it('reports which sections failed in the audit trail', async () => {
+      const { service, auditEventRepository } = buildHarness({
+        llm: new FakeLLMService({ failSections: ['crediting', 'monitoring'] }),
+      });
+      await service.generateAllSections(PROJECT_ID, ACTOR);
+
+      const incomplete = auditEventRepository.events.find((e) => e.eventType === 'GENERATION_INCOMPLETE');
+      expect(incomplete, 'expected a GENERATION_INCOMPLETE event').to.exist;
+      expect(incomplete.after.failedSections).to.have.members(['crediting', 'monitoring']);
+      expect(incomplete.after.failedCount).equals(2);
+      expect(incomplete.after.generatedCount).equals(VM0047_CENSUS_BASED.sectionGuidance!.length - 2);
+      expect(auditEventRepository.events.filter((e) => e.eventType === 'SECTION_GENERATION_FAILED')).to.have.lengthOf(2);
+    });
+
+    it('resuming regenerates only what is still missing', async () => {
+      const { service, caseDocumentRepository } = buildHarness({
+        sections: [
+          { key: 'additionality', status: 'draft_ready', content: { tiers: [] } },
+          { key: 'crediting', status: 'generation_failed', lastError: 'LLM API error 429' },
+        ],
+      });
+      await service.generateAllSections(PROJECT_ID, ACTOR, { onlyMissing: true });
+
+      const written = caseDocumentRepository.writtenSectionKeys;
+      expect(written, 'already-drafted section should be left alone').to.not.include('additionality');
+      expect(written, 'failed section should be retried').to.include('crediting');
+    });
+
+    it('a successful retry clears the recorded failure', async () => {
+      const { service, caseDocumentRepository } = buildHarness({
+        sections: [{ key: 'crediting', status: 'generation_failed', lastError: 'LLM API error 429' }],
+      });
+      await service.generateAllSections(PROJECT_ID, ACTOR, { onlyMissing: true });
+
+      const section = caseDocumentRepository.caseDocument.sections.find((s: any) => s.key === 'crediting');
+      expect(section.status).equals('draft_ready');
+      expect(section.lastError).equals(null);
+    });
+
+    it('still reaches CASE_DRAFT_READY once the resume run succeeds', async () => {
+      const { service, projectRepository } = buildHarness({
+        sections: [{ key: 'crediting', status: 'generation_failed', lastError: 'boom' }],
+      });
+      await service.generateAllSections(PROJECT_ID, ACTOR, { onlyMissing: true });
+
+      expect(projectRepository.project.status).equals(PROJECT_STATUSES.CASE_DRAFT_READY);
     });
 
   });

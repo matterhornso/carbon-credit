@@ -26,6 +26,9 @@ export async function updateSection(
   if (update.sourceCitations) setFields["sections.$.sourceCitations"] = update.sourceCitations;
   if (update.warnings !== undefined) setFields["sections.$.warnings"] = update.warnings;
   if (update.lastEditedByUserId) setFields["sections.$.lastEditedByUserId"] = update.lastEditedByUserId;
+  // Explicitly compared against undefined: passing null is how a successful
+  // regeneration clears a previously recorded failure.
+  if (update.lastError !== undefined) setFields["sections.$.lastError"] = update.lastError;
   setFields["sections.$.lastEditedAt"] = new Date();
 
   const updateQuery: any = { $set: setFields };

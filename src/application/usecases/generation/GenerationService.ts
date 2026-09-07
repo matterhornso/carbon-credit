@@ -50,6 +50,10 @@ interface IGenerationContext {
 
 const MODEL_LABEL = 'gmi-cloud:minimax-m2.7';
 
+// Statuses that mean a section already produced content worth keeping, and so
+// should be skipped when resuming a partially failed run.
+const COMPLETED_SECTION_STATUSES = ['draft_ready', 'user_edited', 'finalized'];
+
 export class GenerationService {
   private auditEventUseCase: AuditEventUseCase;
 
@@ -75,7 +79,11 @@ export class GenerationService {
   // run first, everything else follows in the methodology's own section
   // order. Already-'finalized' sections are left alone (a human approved
   // them; don't clobber that on a re-run).
-  async generateAllSections(projectId: string, actor: IGenerationActor): Promise<ICaseDocumentInterface> {
+  async generateAllSections(
+    projectId: string,
+    actor: IGenerationActor,
+    options: { onlyMissing?: boolean } = {}
+  ): Promise<ICaseDocumentInterface> {
     const context = await this.loadContext(projectId);
     await this.ensureGeneratingStatus(context.project);
 
@@ -87,17 +95,46 @@ export class GenerationService {
     ];
 
     let result: ICaseDocumentInterface = context.caseDocument;
+    const failed: string[] = [];
+    const generated: string[] = [];
+
     for (const key of orderedKeys) {
       const currentSection = (result.sections || []).find((s) => s.key === key);
       if (currentSection?.status === 'finalized') continue;
-      const sectionContext = { ...context, excerpts: buildSourceExcerpts(await this.getAllSourceDocuments(projectId), key) };
-      result = await this.runSectionGeneration(sectionContext, key, actor);
+      // Resume mode: leave anything that already produced content alone, so a
+      // retry after a partial failure costs only the sections still missing
+      // rather than re-billing the whole run.
+      if (options.onlyMissing && currentSection && COMPLETED_SECTION_STATUSES.includes(currentSection.status)) continue;
+
+      try {
+        const sectionContext = { ...context, excerpts: buildSourceExcerpts(await this.getAllSourceDocuments(projectId), key) };
+        result = await this.runSectionGeneration(sectionContext, key, actor);
+        generated.push(key);
+      } catch (error: any) {
+        // One section failing must not abandon the rest of the run. An
+        // unattended generation that dies on section 7 of 10 would otherwise
+        // strand the project mid-state with no record of what went wrong.
+        const message = error?.message || String(error);
+        failed.push(key);
+        const persisted = await this.recordSectionFailure(String(context.caseDocument._id), currentSection, key, message);
+        if (persisted) result = persisted;
+        await this.recordAudit(projectId, actor, 'SECTION_GENERATION_FAILED', undefined, { sectionKey: key, error: message });
+      }
     }
 
+    // Only claim the case is ready if it actually is. A partial run stays in
+    // CASE_GENERATING so a retry is the obvious next step rather than a
+    // reviewer discovering the gap.
     const refreshed = await this.projectRepository.getProjectById(projectId);
-    if (refreshed?.status === PROJECT_STATUSES.CASE_GENERATING) {
+    if (failed.length === 0 && refreshed?.status === PROJECT_STATUSES.CASE_GENERATING) {
       await this.projectRepository.transitionStatus(projectId, PROJECT_STATUSES.CASE_DRAFT_READY);
       await this.recordAudit(projectId, actor, 'STATUS_TRANSITION', { status: PROJECT_STATUSES.CASE_GENERATING }, { status: PROJECT_STATUSES.CASE_DRAFT_READY });
+    } else if (failed.length > 0) {
+      await this.recordAudit(projectId, actor, 'GENERATION_INCOMPLETE', undefined, {
+        generatedCount: generated.length,
+        failedCount: failed.length,
+        failedSections: failed,
+      });
     }
 
     return result;
@@ -167,6 +204,7 @@ export class GenerationService {
       sourceCitations: validatedCitations.map((c) => c.sourceDetail),
       generationHistoryEntry: { prompt: userMessage, response: result.content, model: MODEL_LABEL },
       lastEditedByUserId: actor.userId,
+      lastError: null,
     }));
 
     await this.recordAudit(projectId, actor, 'SECTION_REFINED', undefined, { sectionKey, contentLength: text.length });
@@ -231,6 +269,7 @@ export class GenerationService {
       sourceCitations: citations.map((c) => c.sourceDetail),
       warnings,
       generationHistoryEntry: { prompt: promptForAudit, response: responseForAudit, model: MODEL_LABEL },
+      lastError: null,
     }));
 
     await this.recordAudit(context.project._id, actor, 'SECTION_GENERATED', undefined, {
@@ -265,6 +304,30 @@ export class GenerationService {
       // Contradiction detection is a quality bonus, not a gate — a failure
       // here must never block the actual section generation.
       return [];
+    }
+  }
+
+  // Records why a section failed without destroying work that already exists:
+  // a section that previously generated fine keeps its content and status and
+  // only carries the error, because a stale draft is more useful to a reviewer
+  // than an empty one.
+  private async recordSectionFailure(
+    caseDocumentId: string,
+    currentSection: ICaseSection | undefined,
+    sectionKey: string,
+    message: string
+  ): Promise<ICaseDocumentInterface | null> {
+    const hasUsableContent = !!currentSection?.content && currentSection.status !== 'not_started';
+    try {
+      return await this.caseDocumentRepository.updateSection(new UpdateCaseDocumentSection({
+        caseDocumentId,
+        sectionKey,
+        status: hasUsableContent ? currentSection!.status : 'generation_failed',
+        lastError: message,
+      }));
+    } catch {
+      // Persisting the failure must never itself abort the run.
+      return null;
     }
   }
 

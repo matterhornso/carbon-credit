@@ -28,6 +28,9 @@ export interface IGenerateSectionRequest {
 
 export interface IGenerateAllSectionsRequest {
   projectId: string;
+  /** Resume a partially failed run: generate only sections that have not
+   *  already produced content, instead of regenerating everything. */
+  onlyMissing?: boolean;
 }
 
 export interface IRefineSectionRequest {
