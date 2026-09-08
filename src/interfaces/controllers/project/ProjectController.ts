@@ -15,26 +15,31 @@ import { assertValidTransition, assertIntakeComplete } from '../../../applicatio
 import { evaluateApplicability } from '../../../application/usecases/project_lifecycle/ApplicabilityEvaluator'
 import { ICreateProjectRequest, ISelectMethodologyRequest, ISubmitIntakeRequest, IProjectTransitionRequest } from '../RequestInterfaces'
 import { Util } from '../../utils/Util'
+import { TenantResolver } from '../../services/TenantResolver.service'
 
 @Route('project')
 export class ProjectController extends Controller {
-  private projectRepository: ProjectRepository;
-  private methodologyRepository: MethodologyRepository;
-  private caseDocumentRepository: CaseDocumentRepository;
-  private auditEventRepository: AuditEventRepository;
 
-  constructor() {
-    super();
-    this.projectRepository = new ProjectRepository(new ProjectMongoConnection())
-    this.methodologyRepository = new MethodologyRepository(new MethodologyMongoConnection())
-    this.caseDocumentRepository = new CaseDocumentRepository(new CaseDocumentMongoConnection())
-    this.auditEventRepository = new AuditEventRepository(new AuditEventMongoConnection())
+  private tenantResolver = new TenantResolver();
+
+  // Built per request: these carry the caller's tenant, so a
+  // controller-lifetime instance would have to be tenant-agnostic.
+  private async scoped(request: any) {
+    const scope = await this.tenantResolver.scopeFor(request?.user?._user_uuid || request?.headers?.['_user_uuid']);
+    return {
+      scope,
+      projectRepository: new ProjectRepository(new ProjectMongoConnection(), scope),
+      methodologyRepository: new MethodologyRepository(new MethodologyMongoConnection()),
+      caseDocumentRepository: new CaseDocumentRepository(new CaseDocumentMongoConnection(), scope),
+      auditEventRepository: new AuditEventRepository(new AuditEventMongoConnection(), scope),
+    };
   }
 
   private async recordAuditEvent(request: any, projectId: string, eventType: string, before?: any, after?: any) {
     let _user: any = await new Util().getUserInfo(request.user);
     let _department: any = await new Util().getDepartmentInfo(request.user);
-    const auditEvent_useCase = new AuditEventUseCase(this.auditEventRepository);
+    const { auditEventRepository } = await this.scoped(request);
+    const auditEvent_useCase = new AuditEventUseCase(auditEventRepository);
     await new AuditEvent().record({
       projectId,
       actorUserId: _user._id,
@@ -49,10 +54,11 @@ export class ProjectController extends Controller {
   @Post("create")
   async create(@Body() data: ICreateProjectRequest, @Request() request: any) {
     try {
+      const { projectRepository, methodologyRepository, caseDocumentRepository } = await this.scoped(request);
       let _user: any = await new Util().getUserInfo(request.user);
       let _department: any = await new Util().getDepartmentInfo(request.user);
 
-      const project_useCase = new ProjectUseCase(this.projectRepository);
+      const project_useCase = new ProjectUseCase(projectRepository);
       let project_res: any = await new Project().create({
         name: data.name,
         sector: data.sector,
@@ -78,9 +84,10 @@ export class ProjectController extends Controller {
   @Post("selectMethodology")
   async selectMethodology(@Body() data: ISelectMethodologyRequest, @Request() request: any) {
     try {
-      const project_useCase = new ProjectUseCase(this.projectRepository);
-      const methodology_useCase = new MethodologyUseCase(this.methodologyRepository);
-      const caseDocument_useCase = new CaseDocumentUseCase(this.caseDocumentRepository);
+      const { projectRepository, methodologyRepository, caseDocumentRepository } = await this.scoped(request);
+      const project_useCase = new ProjectUseCase(projectRepository);
+      const methodology_useCase = new MethodologyUseCase(methodologyRepository);
+      const caseDocument_useCase = new CaseDocumentUseCase(caseDocumentRepository);
 
       const project: any = await project_useCase.getProjectById(data.projectId);
       if (!project) {
@@ -110,12 +117,12 @@ export class ProjectController extends Controller {
       if (!project.caseDocumentId || methodologyChanged) {
         const sectionKeys = (methodology.sectionGuidance || []).map((guidance: any) => guidance.section);
         const caseDocument: any = await new CaseDocument().create({ projectId: data.projectId, sectionKeys }, caseDocument_useCase);
-        await this.projectRepository.setCaseDocumentId(data.projectId, caseDocument._id);
+        await projectRepository.setCaseDocumentId(data.projectId, caseDocument._id);
       }
 
-      await this.projectRepository.updateProject(new UpdateProject({ id: data.projectId, methodologyId: data.methodologyId }));
+      await projectRepository.updateProject(new UpdateProject({ id: data.projectId, methodologyId: data.methodologyId }));
       const updated = isFirstSelection
-        ? await this.projectRepository.transitionStatus(data.projectId, PROJECT_STATUSES.METHODOLOGY_SELECTED)
+        ? await projectRepository.transitionStatus(data.projectId, PROJECT_STATUSES.METHODOLOGY_SELECTED)
         : await project_useCase.getProjectById(data.projectId);
 
       await this.recordAuditEvent(request, data.projectId, 'METHODOLOGY_SELECTED', { methodologyId: project.methodologyId }, { methodologyId: data.methodologyId });
@@ -131,8 +138,9 @@ export class ProjectController extends Controller {
   @Post("submitIntake")
   async submitIntake(@Body() data: ISubmitIntakeRequest, @Request() request: any) {
     try {
-      const project_useCase = new ProjectUseCase(this.projectRepository);
-      const methodology_useCase = new MethodologyUseCase(this.methodologyRepository);
+      const { projectRepository, methodologyRepository, caseDocumentRepository } = await this.scoped(request);
+      const project_useCase = new ProjectUseCase(projectRepository);
+      const methodology_useCase = new MethodologyUseCase(methodologyRepository);
 
       const project: any = await project_useCase.getProjectById(data.projectId);
       if (!project) {
@@ -149,8 +157,8 @@ export class ProjectController extends Controller {
       assertIntakeComplete(methodology?.requiredInputs || [], data.intake);
       assertValidTransition(project.status, PROJECT_STATUSES.INPUTS_SUBMITTED);
 
-      await this.projectRepository.updateProject(new UpdateProject({ id: data.projectId, intake: data.intake }));
-      const updated = await this.projectRepository.transitionStatus(data.projectId, PROJECT_STATUSES.INPUTS_SUBMITTED);
+      await projectRepository.updateProject(new UpdateProject({ id: data.projectId, intake: data.intake }));
+      const updated = await projectRepository.transitionStatus(data.projectId, PROJECT_STATUSES.INPUTS_SUBMITTED);
 
       await this.recordAuditEvent(request, data.projectId, 'INTAKE_SUBMITTED', undefined, { intake: data.intake });
 
@@ -165,8 +173,9 @@ export class ProjectController extends Controller {
   @Security("jwt")
   async checkApplicability(@Request() request: any, @Query() projectId: string) {
     try {
-      const project_useCase = new ProjectUseCase(this.projectRepository);
-      const methodology_useCase = new MethodologyUseCase(this.methodologyRepository);
+      const { projectRepository, methodologyRepository, caseDocumentRepository } = await this.scoped(request);
+      const project_useCase = new ProjectUseCase(projectRepository);
+      const methodology_useCase = new MethodologyUseCase(methodologyRepository);
 
       const project: any = await project_useCase.getProjectById(projectId);
       if (!project || !project.methodologyId) {
@@ -192,8 +201,9 @@ export class ProjectController extends Controller {
   @Post("transition")
   async transition(@Body() data: IProjectTransitionRequest, @Request() request: any) {
     try {
-      const project_useCase = new ProjectUseCase(this.projectRepository);
-      const caseDocument_useCase = new CaseDocumentUseCase(this.caseDocumentRepository);
+      const { projectRepository, methodologyRepository, caseDocumentRepository } = await this.scoped(request);
+      const project_useCase = new ProjectUseCase(projectRepository);
+      const caseDocument_useCase = new CaseDocumentUseCase(caseDocumentRepository);
 
       const project: any = await project_useCase.getProjectById(data.projectId);
       if (!project) {
@@ -214,7 +224,7 @@ export class ProjectController extends Controller {
         }
       }
 
-      const updated = await this.projectRepository.transitionStatus(data.projectId, data.toStatus);
+      const updated = await projectRepository.transitionStatus(data.projectId, data.toStatus);
 
       await this.recordAuditEvent(request, data.projectId, 'STATUS_TRANSITION', { status: project.status }, { status: data.toStatus });
 
@@ -229,7 +239,8 @@ export class ProjectController extends Controller {
   @Security("jwt")
   async getProjectById(@Request() request: any, @Query() id: string) {
     try {
-      const project_useCase = new ProjectUseCase(this.projectRepository);
+      const { projectRepository, methodologyRepository, caseDocumentRepository } = await this.scoped(request);
+      const project_useCase = new ProjectUseCase(projectRepository);
       let result = await project_useCase.getProjectById(id)
       return new Response().sendResponseSuccess(result, true);
     } catch (Error) {
@@ -244,8 +255,9 @@ export class ProjectController extends Controller {
   @Security("jwt")
   async getAllProjects(@Request() request: any, @Query() status?: string) {
     try {
+      const { projectRepository, methodologyRepository, caseDocumentRepository } = await this.scoped(request);
       let _department: any = await new Util().getDepartmentInfo(request.user);
-      const project_useCase = new ProjectUseCase(this.projectRepository);
+      const project_useCase = new ProjectUseCase(projectRepository);
       let result = await project_useCase.getAllProjects({ proponentOrgId: _department._id, status })
       return new Response().sendResponseSuccess(result, true);
     } catch (Error) {

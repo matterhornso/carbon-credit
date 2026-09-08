@@ -18,7 +18,8 @@
     "start-local": "ENVIRONMENT=local npm start ",
     "start-test": "ENVIRONMENT=test npm start && npm run test ",
     "seed:methodology": "ts-node src/infrastructure/database/seed/methodology.seed.ts",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "seed:tenant": "ts-node src/infrastructure/database/seed/tenant.seed.ts"
   },
   "author": "amit maurya",
   "license": "ISC",

@@ -12,14 +12,17 @@ import { UpdateCaseDocumentSection } from "../../domain/case_document/UpdateCase
 import { ISourceDocumentInterface } from "../../domain/source_document/sourceDocumentInterface";
 import { IAuditEventInterface } from "../../domain/audit_event/auditEventInterface";
 
+// tenantId is a required first argument on every operation touching tenant
+// data. It is not optional and has no default: a caller that has not resolved a
+// tenant cannot reach the database at all.
 export abstract class ProjectConnection {
-  abstract createProject(query: CreateProject): Promise<IProjectInterface>
-  abstract updateProject(query: UpdateProject): Promise<IProjectInterface | null>
-  abstract transitionStatus(id: string, status: string): Promise<IProjectInterface | null>
-  abstract setCaseDocumentId(id: string, caseDocumentId: string): Promise<IProjectInterface | null>
-  abstract addAttachment(id: string, sourceDocumentId: string): Promise<IProjectInterface | null>
-  abstract getAllProjects(filter?:any): Promise<IProjectInterface[]>
-  abstract getProjectById(id:string): Promise<IProjectInterface | null>
+  abstract createProject(tenantId: string, query: CreateProject): Promise<IProjectInterface>
+  abstract updateProject(tenantId: string, query: UpdateProject): Promise<IProjectInterface | null>
+  abstract transitionStatus(tenantId: string, id: string, status: string): Promise<IProjectInterface | null>
+  abstract setCaseDocumentId(tenantId: string, id: string, caseDocumentId: string): Promise<IProjectInterface | null>
+  abstract addAttachment(tenantId: string, id: string, sourceDocumentId: string): Promise<IProjectInterface | null>
+  abstract getAllProjects(tenantId: string, filter?:any): Promise<IProjectInterface[]>
+  abstract getProjectById(tenantId: string, id:string): Promise<IProjectInterface | null>
 }
 
 export abstract class MethodologyConnection {
@@ -30,20 +33,20 @@ export abstract class MethodologyConnection {
 }
 
 export abstract class CaseDocumentConnection {
-  abstract createCaseDocument(query: CreateCaseDocument): Promise<ICaseDocumentInterface>
-  abstract updateSection(query: UpdateCaseDocumentSection): Promise<ICaseDocumentInterface | null>
-  abstract getCaseDocumentByProjectId(projectId: string): Promise<ICaseDocumentInterface | null>
+  abstract createCaseDocument(tenantId: string, query: CreateCaseDocument): Promise<ICaseDocumentInterface>
+  abstract updateSection(tenantId: string, query: UpdateCaseDocumentSection): Promise<ICaseDocumentInterface | null>
+  abstract getCaseDocumentByProjectId(tenantId: string, projectId: string): Promise<ICaseDocumentInterface | null>
 }
 
 export abstract class SourceDocumentConnection {
-  abstract createSourceDocument(query: CreateSourceDocument): Promise<ISourceDocumentInterface>
-  abstract getSourceDocumentsByProjectId(projectId: string): Promise<ISourceDocumentInterface[]>
-  abstract updateExtractedText(id: string, extractedText: string, status: string): Promise<ISourceDocumentInterface | null>
+  abstract createSourceDocument(tenantId: string, query: CreateSourceDocument): Promise<ISourceDocumentInterface>
+  abstract getSourceDocumentsByProjectId(tenantId: string, projectId: string): Promise<ISourceDocumentInterface[]>
+  abstract updateExtractedText(tenantId: string, id: string, extractedText: string, status: string): Promise<ISourceDocumentInterface | null>
 }
 
 export abstract class AuditEventConnection {
-  abstract createAuditEvent(query: CreateAuditEvent): Promise<IAuditEventInterface>
-  abstract getEventsByProjectId(projectId: string): Promise<IAuditEventInterface[]>
+  abstract createAuditEvent(tenantId: string, query: CreateAuditEvent): Promise<IAuditEventInterface>
+  abstract getEventsByProjectId(tenantId: string, projectId: string): Promise<IAuditEventInterface[]>
 }
 
 export abstract class ReportConnection {

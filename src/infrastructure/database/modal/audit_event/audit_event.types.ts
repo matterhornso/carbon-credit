@@ -4,6 +4,6 @@ import { IAuditEventInterface } from "../../../../domain/audit_event/auditEventI
 export interface IAuditEventDocument extends IAuditEventInterface, Document { }
 
 export interface IAuditEventModel extends Model<IAuditEventDocument> {
-  createAuditEvent: (this: IAuditEventModel, event: IAuditEventInterface) => Promise<IAuditEventInterface>;
-  getEventsByProjectId: (this: IAuditEventModel, projectId: string) => Promise<IAuditEventInterface[]>;
+  createAuditEvent: (this: IAuditEventModel, tenantId: string, event: IAuditEventInterface) => Promise<IAuditEventInterface>;
+  getEventsByProjectId: (this: IAuditEventModel, tenantId: string, projectId: string) => Promise<IAuditEventInterface[]>;
 }

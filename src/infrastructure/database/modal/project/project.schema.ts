@@ -14,6 +14,8 @@ const ProjectCreditingPeriodSchema = new Schema({
 }, { _id: false });
 
 const ProjectSchema = new Schema({
+  // Isolation boundary. Indexed because every query filters on it.
+  tenantId: { type: String, required: true, index: true },
   name: {
     type: String,
     required: true

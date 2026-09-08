@@ -2,6 +2,8 @@ import { Schema } from "mongoose";
 import { createSourceDocument, getSourceDocumentsByProjectId, updateExtractedText } from "./source_document.statics";
 
 const SourceDocumentSchema = new Schema({
+  // Isolation boundary. Indexed because every query filters on it.
+  tenantId: { type: String, required: true, index: true },
   projectId: {
     type: Schema.Types.ObjectId,
     ref: 'project',

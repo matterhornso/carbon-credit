@@ -9,15 +9,15 @@ export class SourceDocumentMongoConnection extends SourceDocumentConnection {
     super();
   }
 
-  async createSourceDocument(doc: CreateSourceDocument): Promise<ISourceDocumentInterface> {
-    return await SourceDocumentModel.createSourceDocument(doc);
+  async createSourceDocument(tenantId: string, doc: CreateSourceDocument): Promise<ISourceDocumentInterface> {
+    return await SourceDocumentModel.createSourceDocument(tenantId, doc);
   }
 
-  async getSourceDocumentsByProjectId(projectId: string): Promise<ISourceDocumentInterface[]> {
-    return await SourceDocumentModel.getSourceDocumentsByProjectId(projectId);
+  async getSourceDocumentsByProjectId(tenantId: string, projectId: string): Promise<ISourceDocumentInterface[]> {
+    return await SourceDocumentModel.getSourceDocumentsByProjectId(tenantId, projectId);
   }
 
-  async updateExtractedText(id: string, extractedText: string, status: string): Promise<ISourceDocumentInterface | null> {
-    return await SourceDocumentModel.updateExtractedText(id, extractedText, status);
+  async updateExtractedText(tenantId: string, id: string, extractedText: string, status: string): Promise<ISourceDocumentInterface | null> {
+    return await SourceDocumentModel.updateExtractedText(tenantId, id, extractedText, status);
   }
 }

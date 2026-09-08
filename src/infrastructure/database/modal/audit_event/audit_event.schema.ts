@@ -2,6 +2,8 @@ import { Schema } from "mongoose";
 import { createAuditEvent, getEventsByProjectId } from "./audit_event.statics";
 
 const AuditEventSchema = new Schema({
+  // Isolation boundary. Indexed because every query filters on it.
+  tenantId: { type: String, required: true, index: true },
   projectId: {
     type: Schema.Types.ObjectId,
     ref: 'project',

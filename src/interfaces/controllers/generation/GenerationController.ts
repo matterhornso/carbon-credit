@@ -15,27 +15,31 @@ import { LLMService } from '../../services/LLM.service'
 import { UpdateCaseDocumentSection } from '../../../domain/case_document/UpdateCaseDocumentSection'
 import { IGenerateSectionRequest, IGenerateAllSectionsRequest, IRefineSectionRequest, IGenerateCoverNoteRequest } from '../RequestInterfaces'
 import { Util } from '../../utils/Util'
+import { TenantResolver } from '../../services/TenantResolver.service'
 
 @Route('generation')
 export class GenerationController extends Controller {
-  private generationService: GenerationService;
-  private caseDocumentRepository: CaseDocumentRepository;
+  private tenantResolver = new TenantResolver();
 
-  constructor() {
-    super();
-    const projectRepository = new ProjectRepository(new ProjectMongoConnection());
-    const methodologyRepository = new MethodologyRepository(new MethodologyMongoConnection());
-    this.caseDocumentRepository = new CaseDocumentRepository(new CaseDocumentMongoConnection());
-    const sourceDocumentRepository = new SourceDocumentRepository(new SourceDocumentMongoConnection());
-    const auditEventRepository = new AuditEventRepository(new AuditEventMongoConnection());
-    this.generationService = new GenerationService(
-      projectRepository,
-      methodologyRepository,
-      this.caseDocumentRepository,
-      sourceDocumentRepository,
-      auditEventRepository,
+  // Repositories are built per request rather than once at construction,
+  // because they carry the caller's tenant. A controller-lifetime repository
+  // would have to be tenant-agnostic, which is exactly the property this
+  // change removes.
+  private async scoped(request: any): Promise<{
+    generationService: GenerationService;
+    caseDocumentRepository: CaseDocumentRepository;
+  }> {
+    const scope = await this.tenantResolver.scopeFor(request?.user?._user_uuid || request?.headers?.['_user_uuid']);
+    const caseDocumentRepository = new CaseDocumentRepository(new CaseDocumentMongoConnection(), scope);
+    const generationService = new GenerationService(
+      new ProjectRepository(new ProjectMongoConnection(), scope),
+      new MethodologyRepository(new MethodologyMongoConnection()),
+      caseDocumentRepository,
+      new SourceDocumentRepository(new SourceDocumentMongoConnection(), scope),
+      new AuditEventRepository(new AuditEventMongoConnection(), scope),
       new LLMService()
     );
+    return { generationService, caseDocumentRepository };
   }
 
   private async getActor(request: any): Promise<{ userId: string; role: string }> {
@@ -54,7 +58,8 @@ export class GenerationController extends Controller {
   async generateSection(@Body() data: IGenerateSectionRequest, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
-      const result = await this.generationService.generateSection(data.projectId, data.sectionKey, actor);
+      const { generationService } = await this.scoped(request);
+      const result = await generationService.generateSection(data.projectId, data.sectionKey, actor);
       return new Response().sendResponseSuccess(result, true);
     } catch (error: any) {
       this.setStatus(400);
@@ -77,7 +82,8 @@ export class GenerationController extends Controller {
   async generateAll(@Body() data: IGenerateAllSectionsRequest, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
-      const result = await this.generationService.generateAllSections(data.projectId, actor, {
+      const { generationService } = await this.scoped(request);
+      const result = await generationService.generateAllSections(data.projectId, actor, {
         onlyMissing: data.onlyMissing === true,
       });
       return new Response().sendResponseSuccess(result, true);
@@ -94,7 +100,8 @@ export class GenerationController extends Controller {
   async refineSection(@Body() data: IRefineSectionRequest, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
-      const result = await this.generationService.refineSection(data.projectId, data.sectionKey, data.message, actor);
+      const { generationService } = await this.scoped(request);
+      const result = await generationService.refineSection(data.projectId, data.sectionKey, data.message, actor);
       return new Response().sendResponseSuccess(result, true);
     } catch (error: any) {
       this.setStatus(400);
@@ -111,12 +118,13 @@ export class GenerationController extends Controller {
   async updateSection(@Body() data: { projectId: string; sectionKey: string; content: any; status?: string }, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
-      const caseDocument: any = await this.caseDocumentRepository.getCaseDocumentByProjectId(data.projectId);
+      const { caseDocumentRepository } = await this.scoped(request);
+      const caseDocument: any = await caseDocumentRepository.getCaseDocumentByProjectId(data.projectId);
       if (!caseDocument) {
         this.setStatus(404);
         return new Response().sendResponseFailure("Case document not found", false);
       }
-      const updated = await this.caseDocumentRepository.updateSection(new UpdateCaseDocumentSection({
+      const updated = await caseDocumentRepository.updateSection(new UpdateCaseDocumentSection({
         caseDocumentId: String(caseDocument._id),
         sectionKey: data.sectionKey,
         status: data.status || 'user_edited',
@@ -141,7 +149,8 @@ export class GenerationController extends Controller {
   async generateCoverNote(@Body() data: IGenerateCoverNoteRequest, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
-      const result = await this.generationService.generateCoverNote(data.projectId, actor);
+      const { generationService } = await this.scoped(request);
+      const result = await generationService.generateCoverNote(data.projectId, actor);
       return new Response().sendResponseSuccess(result, true);
     } catch (error: any) {
       this.setStatus(400);
@@ -153,7 +162,8 @@ export class GenerationController extends Controller {
   @Security("jwt")
   async getCaseDocument(@Request() request: any, @Query() projectId: string) {
     try {
-      const result = await this.caseDocumentRepository.getCaseDocumentByProjectId(projectId);
+      const { caseDocumentRepository } = await this.scoped(request);
+      const result = await caseDocumentRepository.getCaseDocumentByProjectId(projectId);
       if (!result) {
         this.setStatus(404);
         return new Response().sendResponseFailure("Case document not found", false);

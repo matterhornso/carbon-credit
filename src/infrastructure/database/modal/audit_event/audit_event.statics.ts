@@ -4,10 +4,11 @@ import { IAuditEventInterface } from "../../../../domain/audit_event/auditEventI
 
 export async function createAuditEvent(
   this: Model<IAuditEventModel>,
+  tenantId: string,
   event: IAuditEventInterface
 ): Promise<any> {
   try {
-    const record = await this.create(event);
+    const record = await this.create({ ...event, tenantId });
     return record;
   } catch (error: any) {
     console.trace(error);
@@ -17,8 +18,9 @@ export async function createAuditEvent(
 
 export async function getEventsByProjectId(
   this: Model<IAuditEventModel>,
+  tenantId: string,
   projectId: string
 ): Promise<any> {
-  const records = await this.find({ projectId }).sort({ createdAt: -1 });
+  const records = await this.find({ projectId, tenantId }).sort({ createdAt: -1 });
   return records || [];
 }

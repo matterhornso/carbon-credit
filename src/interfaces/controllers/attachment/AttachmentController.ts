@@ -13,6 +13,7 @@ import { SourceDocument, AuditEvent } from '../../../domain'
 import { StorageService } from '../../services/Storage.service'
 import { extractText } from '../../services/TextExtraction.service'
 import { Util } from '../../utils/Util'
+import { TenantResolver } from '../../services/TenantResolver.service'
 
 // Same limit as the precedent in encryption-service/FileUtil.ts. A single
 // file per request — carbon-project evidence documents (surveys, land
@@ -21,17 +22,25 @@ const MAX_FILE_SIZE_BYTES = 8_000_000;
 
 @Route('attachment')
 export class AttachmentController extends Controller {
-  private projectRepository: ProjectRepository;
-  private sourceDocumentRepository: SourceDocumentRepository;
-  private auditEventRepository: AuditEventRepository;
   private storageService: StorageService;
+
+  private tenantResolver = new TenantResolver();
 
   constructor() {
     super();
-    this.projectRepository = new ProjectRepository(new ProjectMongoConnection());
-    this.sourceDocumentRepository = new SourceDocumentRepository(new SourceDocumentMongoConnection());
-    this.auditEventRepository = new AuditEventRepository(new AuditEventMongoConnection());
     this.storageService = new StorageService();
+  }
+
+  // Per request: these carry the caller's tenant.
+  private async scoped(request: any) {
+    const scope = await this.tenantResolver.scopeFor(
+      (request as any)?.user?._user_uuid || (request as any)?.headers?.['_user_uuid']
+    );
+    return {
+      projectRepository: new ProjectRepository(new ProjectMongoConnection(), scope),
+      sourceDocumentRepository: new SourceDocumentRepository(new SourceDocumentMongoConnection(), scope),
+      auditEventRepository: new AuditEventRepository(new AuditEventMongoConnection(), scope),
+    };
   }
 
   private async getActor(request: any): Promise<{ userId: string; role: string }> {
@@ -73,7 +82,8 @@ export class AttachmentController extends Controller {
   @Post("upload")
   async upload(@Request() request: express.Request, @Query() projectId: string) {
     try {
-      const project = await this.projectRepository.getProjectById(projectId);
+      const { projectRepository, sourceDocumentRepository, auditEventRepository } = await this.scoped(request);
+      const project = await projectRepository.getProjectById(projectId);
       if (!project) {
         this.setStatus(404);
         return new Response().sendResponseFailure("Project not found", false);
@@ -85,7 +95,7 @@ export class AttachmentController extends Controller {
 
       const uploadResult = await this.storageService.upload(file.buffer, file.originalname, projectId);
 
-      const sourceDocument_useCase = new SourceDocumentUseCase(this.sourceDocumentRepository);
+      const sourceDocument_useCase = new SourceDocumentUseCase(sourceDocumentRepository);
       const created: any = await new SourceDocument().create({
         projectId,
         filename: file.originalname,
@@ -97,7 +107,7 @@ export class AttachmentController extends Controller {
         linkedSections,
       }, sourceDocument_useCase);
 
-      await this.projectRepository.addAttachment(projectId, created._id);
+      await projectRepository.addAttachment(projectId, created._id);
 
       const extraction = await extractText(file.buffer, file.mimetype);
       // Parsing successfully is not the same as producing evidence. A scanned
@@ -105,13 +115,13 @@ export class AttachmentController extends Controller {
       // document with no text — so marking that 'processed' would leave the
       // customer believing they supplied something no section can ever cite.
       const usable = extraction.supported && extraction.text.trim().length > 0;
-      const finalDoc = await this.sourceDocumentRepository.updateExtractedText(
+      const finalDoc = await sourceDocumentRepository.updateExtractedText(
         String(created._id),
         extraction.text,
         usable ? 'processed' : 'failed'
       );
 
-      const auditEvent_useCase = new AuditEventUseCase(this.auditEventRepository);
+      const auditEvent_useCase = new AuditEventUseCase(auditEventRepository);
       await new AuditEvent().record({
         projectId,
         actorUserId: actor.userId,
@@ -145,7 +155,8 @@ export class AttachmentController extends Controller {
   @Security("jwt")
   async listByProject(@Request() request: any, @Query() projectId: string) {
     try {
-      const result = await this.sourceDocumentRepository.getSourceDocumentsByProjectId(projectId);
+      const { projectRepository, sourceDocumentRepository, auditEventRepository } = await this.scoped(request);
+      const result = await sourceDocumentRepository.getSourceDocumentsByProjectId(projectId);
       return new Response().sendResponseSuccess(result, true);
     } catch (Error) {
       this.setStatus(500);

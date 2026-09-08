@@ -10,15 +10,15 @@ export class CaseDocumentMongoConnection extends CaseDocumentConnection {
     super();
   }
 
-  async createCaseDocument(caseDocument: CreateCaseDocument): Promise<ICaseDocumentInterface> {
-    return await CaseDocumentModel.createCaseDocument(caseDocument);
+  async createCaseDocument(tenantId: string, caseDocument: CreateCaseDocument): Promise<ICaseDocumentInterface> {
+    return await CaseDocumentModel.createCaseDocument(tenantId, caseDocument);
   }
 
-  async updateSection(update: UpdateCaseDocumentSection): Promise<ICaseDocumentInterface | null> {
-    return await CaseDocumentModel.updateSection(update);
+  async updateSection(tenantId: string, update: UpdateCaseDocumentSection): Promise<ICaseDocumentInterface | null> {
+    return await CaseDocumentModel.updateSection(tenantId, update);
   }
 
-  async getCaseDocumentByProjectId(projectId: string): Promise<ICaseDocumentInterface | null> {
-    return await CaseDocumentModel.getCaseDocumentByProjectId(projectId);
+  async getCaseDocumentByProjectId(tenantId: string, projectId: string): Promise<ICaseDocumentInterface | null> {
+    return await CaseDocumentModel.getCaseDocumentByProjectId(tenantId, projectId);
   }
 }

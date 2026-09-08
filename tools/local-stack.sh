@@ -32,6 +32,10 @@
 # 4. Node 20 is required for the services: their eosjs/jsonwebtoken deps break
 #    on Node 26 ("invalid base-58", buffer-equal-constant-time prototype).
 #    The webapp is fine on the default node.
+# 6. TENANT_DEFAULT_SLUG puts every authenticated user into one tenant. That is
+#    correct for local and single-operator deployments and WRONG anywhere more
+#    than one operator uses the system: with it set, a user with no membership
+#    silently lands in the default tenant instead of being refused.
 # 5. AUTH_DEV_OTP makes the login OTP a fixed 12121 for local dev only. Without
 #    it auth-service generates a real random OTP that you cannot receive (no
 #    mail/SMS locally) — see Checkpoint 5. NEVER set this in a deployed env.
@@ -116,6 +120,14 @@ start_gateway() {
   wait_for_port $PORT_GATEWAY gateway
 }
 
+seed_tenant() {
+  log "seeding the default tenant and backfilling tenantId on pre-tenancy rows"
+  ( cd "$ROOT/carbon-credit" && \
+    ENVIRONMENT=test MONGODB_URI="" MONGODB_HOST=mongodb://localhost:$PORT_MONGO \
+    MONGODB_PORT=$PORT_MONGO DB_NAME=dev TENANT_DEFAULT_SLUG=tenant-zero \
+    npx ts-node src/infrastructure/database/seed/tenant.seed.ts 2>&1 | sed 's/^/    /' )
+}
+
 seed_methodologies() {
   log "seeding methodologies (VM0047, VMR0017; skips if already present)"
   ( cd "$ROOT/carbon-credit" && \
@@ -174,8 +186,10 @@ cmd_up() {
     ENVIRONMENT=test MONGODB_URI= MONGODB_HOST=mongodb://localhost:$PORT_MONGO \
     MONGODB_PORT=$PORT_MONGO DB_NAME=dev PORT=$PORT_CARBON \
     AUTH_SERVICE_URL=$GW USER_SERVICE_URL=$GW ROLE_SERVICE_URL=$GW \
+    TENANT_DEFAULT_SLUG=tenant-zero \
     LLM_API_KEY="$llm_key" LLM_BASE_URL="$llm_base" LLM_MODEL="$llm_model"
 
+  seed_tenant
   seed_methodologies
   echo
   cmd_status

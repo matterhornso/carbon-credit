@@ -23,6 +23,8 @@ const CaseSectionSchema = new Schema({
 }, { _id: false });
 
 const CaseDocumentSchema = new Schema({
+  // Isolation boundary. Indexed because every query filters on it.
+  tenantId: { type: String, required: true, index: true },
   projectId: {
     type: Schema.Types.ObjectId,
     ref: 'project',

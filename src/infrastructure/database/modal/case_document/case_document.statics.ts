@@ -5,10 +5,11 @@ import { UpdateCaseDocumentSection } from "../../../../domain/case_document/Upda
 
 export async function createCaseDocument(
   this: Model<ICaseDocumentModel>,
+  tenantId: string,
   caseDocument: ICaseDocumentInterface
 ): Promise<any> {
   try {
-    const record = await this.create(caseDocument);
+    const record = await this.create({ ...caseDocument, tenantId });
     return record;
   } catch (error: any) {
     console.trace(error);
@@ -18,6 +19,7 @@ export async function createCaseDocument(
 
 export async function updateSection(
   this: Model<ICaseDocumentModel>,
+  tenantId: string,
   update: UpdateCaseDocumentSection
 ): Promise<any> {
   const setFields: any = {};
@@ -37,7 +39,7 @@ export async function updateSection(
   }
 
   const record = await this.findOneAndUpdate(
-    { _id: update.caseDocumentId, "sections.key": update.sectionKey },
+    { _id: update.caseDocumentId, tenantId, "sections.key": update.sectionKey },
     updateQuery,
     { new: true }
   );
@@ -46,8 +48,9 @@ export async function updateSection(
 
 export async function getCaseDocumentByProjectId(
   this: Model<ICaseDocumentModel>,
+  tenantId: string,
   projectId: string
 ): Promise<any> {
-  const record = await this.findOne({ projectId });
+  const record = await this.findOne({ projectId, tenantId });
   return record || null;
 }

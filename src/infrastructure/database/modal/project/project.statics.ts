@@ -4,10 +4,11 @@ import { IProjectInterface } from "../../../../domain/project/projectInterface";
 
 export async function createProject(
   this: Model<IProjectModel>,
+  tenantId: string,
   project: IProjectInterface
 ): Promise<any> {
   try {
-    const record = await this.create(project)
+    const record = await this.create({ ...project, tenantId })
     return record;
   }
   catch (error: any) {
@@ -18,6 +19,7 @@ export async function createProject(
 
 export async function updateProject(
   this: Model<IProjectModel>,
+  tenantId: string,
   data: any
 ): Promise<any> {
   const setFields: any = {};
@@ -29,7 +31,7 @@ export async function updateProject(
   if (data.intake !== undefined) setFields.intake = data.intake;
 
   const record = await this.findOneAndUpdate(
-    { _id: data.id },
+    { _id: data.id, tenantId },
     { $set: setFields },
     { new: true }
   );
@@ -38,11 +40,12 @@ export async function updateProject(
 
 export async function transitionStatus(
   this: Model<IProjectModel>,
+  tenantId: string,
   id: string,
   status: string
 ): Promise<any> {
   const record = await this.findOneAndUpdate(
-    { _id: id },
+    { _id: id, tenantId },
     { $set: { status } },
     { new: true }
   );
@@ -51,11 +54,12 @@ export async function transitionStatus(
 
 export async function setCaseDocumentId(
   this: Model<IProjectModel>,
+  tenantId: string,
   id: string,
   caseDocumentId: string
 ): Promise<any> {
   const record = await this.findOneAndUpdate(
-    { _id: id },
+    { _id: id, tenantId },
     { $set: { caseDocumentId } },
     { new: true }
   );
@@ -64,11 +68,12 @@ export async function setCaseDocumentId(
 
 export async function addAttachment(
   this: Model<IProjectModel>,
+  tenantId: string,
   id: string,
   sourceDocumentId: string
 ): Promise<any> {
   const record = await this.findOneAndUpdate(
-    { _id: id },
+    { _id: id, tenantId },
     { $push: { attachments: sourceDocumentId } },
     { new: true }
   );
@@ -77,20 +82,24 @@ export async function addAttachment(
 
 export async function getProjectById(
   this: Model<IProjectModel>,
+  tenantId: string,
   id: string
 ): Promise<any> {
-  const record = await this.findOne({ _id: id }).populate("methodologyId").populate("caseDocumentId");
+  const record = await this.findOne({ _id: id, tenantId }).populate("methodologyId").populate("caseDocumentId");
   return record || null;
 }
 
 export async function getAllProjects(
   this: Model<IProjectModel>,
+  tenantId: string,
   filter?: any
 ): Promise<any> {
+  // tenantId is applied last so a caller-supplied filter cannot widen it.
   let query: any = {};
   if (filter?.proponentOrgId) query.proponentOrgId = filter.proponentOrgId;
   if (filter?.createdByUserId) query.createdByUserId = filter.createdByUserId;
   if (filter?.status) query.status = filter.status;
+  query.tenantId = tenantId;
   const records = await this.find(query).sort({ createdAt: -1 });
   return records || [];
 }

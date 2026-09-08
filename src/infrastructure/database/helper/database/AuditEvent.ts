@@ -9,11 +9,11 @@ export class AuditEventMongoConnection extends AuditEventConnection {
     super();
   }
 
-  async createAuditEvent(event: CreateAuditEvent): Promise<IAuditEventInterface> {
-    return await AuditEventModel.createAuditEvent(event);
+  async createAuditEvent(tenantId: string, event: CreateAuditEvent): Promise<IAuditEventInterface> {
+    return await AuditEventModel.createAuditEvent(tenantId, event);
   }
 
-  async getEventsByProjectId(projectId: string): Promise<IAuditEventInterface[]> {
-    return await AuditEventModel.getEventsByProjectId(projectId);
+  async getEventsByProjectId(tenantId: string, projectId: string): Promise<IAuditEventInterface[]> {
+    return await AuditEventModel.getEventsByProjectId(tenantId, projectId);
   }
 }
