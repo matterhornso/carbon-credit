@@ -16,6 +16,9 @@ import { UpdateCaseDocumentSection } from '../../../domain/case_document/UpdateC
 import { IGenerateSectionRequest, IGenerateAllSectionsRequest, IRefineSectionRequest, IGenerateCoverNoteRequest } from '../RequestInterfaces'
 import { Util } from '../../utils/Util'
 import { TenantResolver } from '../../services/TenantResolver.service'
+import { JobQueue } from '../../../application/usecases/job/JobQueue'
+import { CreateJob } from '../../../domain/job/CreateJob'
+import { JOB_TYPES } from '../../../domain/job/jobInterface'
 
 @Route('generation')
 export class GenerationController extends Controller {
@@ -82,11 +85,20 @@ export class GenerationController extends Controller {
   async generateAll(@Body() data: IGenerateAllSectionsRequest, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
-      const { generationService } = await this.scoped(request);
-      const result = await generationService.generateAllSections(data.projectId, actor, {
-        onlyMissing: data.onlyMissing === true,
-      });
-      return new Response().sendResponseSuccess(result, true);
+      const scope = await this.tenantResolver.scopeFor(
+        request?.user?._user_uuid || request?.headers?.['_user_uuid']
+      );
+      // Enqueued rather than run inline: the previous behaviour held an HTTP
+      // request open for ten sequential model calls, so the run died with the
+      // connection and could only be started by a person waiting on it.
+      const job = await new JobQueue().enqueue(new CreateJob({
+        tenantId: scope.tenantId,
+        type: JOB_TYPES.GENERATE_ALL_SECTIONS,
+        payload: { projectId: data.projectId, actor, onlyMissing: data.onlyMissing === true },
+      }));
+      return new Response().sendResponseSuccess(
+        { jobId: String(job._id), status: job.status, projectId: data.projectId }, true
+      );
     } catch (error: any) {
       this.setStatus(400);
       return new Response().sendResponseFailure(error?.message || "Something went wrong", false);
@@ -136,6 +148,30 @@ export class GenerationController extends Controller {
         return new Response().sendResponseFailure("Section not found", false);
       }
       return new Response().sendResponseSuccess(updated, true);
+    } catch (error: any) {
+      this.setStatus(400);
+      return new Response().sendResponseFailure(error?.message || "Something went wrong", false);
+    }
+  }
+
+  // Progress for an enqueued run. Scoped to the caller's tenant, so one
+  // operator cannot watch another's work.
+  @Security("jwt")
+  @Get("getJob")
+  async getJob(@Request() request: any, @Query() jobId: string) {
+    try {
+      const scope = await this.tenantResolver.scopeFor(
+        request?.user?._user_uuid || request?.headers?.['_user_uuid']
+      );
+      const job = await new JobQueue().getById(scope.tenantId, jobId);
+      if (!job) {
+        this.setStatus(404);
+        return new Response().sendResponseFailure("Job not found", false);
+      }
+      return new Response().sendResponseSuccess({
+        jobId, status: job.status, attempts: job.attempts,
+        lastError: job.lastError, result: job.result,
+      }, true);
     } catch (error: any) {
       this.setStatus(400);
       return new Response().sendResponseFailure(error?.message || "Something went wrong", false);

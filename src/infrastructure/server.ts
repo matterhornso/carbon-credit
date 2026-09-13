@@ -15,6 +15,7 @@ import app from "./router";
 // });
 
 import { RegisterRoutes } from './routes/routes';
+import { JobWorker } from '../application/usecases/job/JobWorker';
 
 if (process.env.NODE_ENV === 'dev') {
   // only use in development
@@ -32,6 +33,10 @@ RegisterRoutes(app);
 /**
  * Start Express server.
  */
+// Background work starts with the server: the job worker polls for queued
+// runs so generation continues whether or not anyone is watching a browser.
+new JobWorker().start();
+
 const server = app.listen(app.get("port"), () => {
   console.log(
     "  App is running at http://localhost:%d in %s mode",
