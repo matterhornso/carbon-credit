@@ -16,6 +16,9 @@ import { evaluateApplicability } from '../../../application/usecases/project_lif
 import { ICreateProjectRequest, ISelectMethodologyRequest, ISubmitIntakeRequest, IProjectTransitionRequest } from '../RequestInterfaces'
 import { Util } from '../../utils/Util'
 import { TenantResolver } from '../../services/TenantResolver.service'
+import { analyseEvidenceGaps } from '../../../application/usecases/project_lifecycle/EvidenceGapAnalyzer'
+import { SourceDocumentRepository } from '../../database/SourceDocumentRepository'
+import { SourceDocumentMongoConnection } from '../../../infrastructure/database/helper/database/SourceDocument'
 
 @Route('project')
 export class ProjectController extends Controller {
@@ -32,6 +35,7 @@ export class ProjectController extends Controller {
       methodologyRepository: new MethodologyRepository(new MethodologyMongoConnection()),
       caseDocumentRepository: new CaseDocumentRepository(new CaseDocumentMongoConnection(), scope),
       auditEventRepository: new AuditEventRepository(new AuditEventMongoConnection(), scope),
+      sourceDocumentRepository: new SourceDocumentRepository(new SourceDocumentMongoConnection(), scope),
     };
   }
 
@@ -166,6 +170,32 @@ export class ProjectController extends Controller {
     } catch (error: any) {
       this.setStatus(400);
       return new Response().sendResponseFailure(error?.message || "Something went wrong", false);
+    }
+  }
+
+  // What the developer will have to prove, computed from what the methodology
+  // declares against what has actually been supplied. No model call: this is a
+  // comparison of declarations, so it works in any environment and returns in
+  // milliseconds. The point is to surface a missing piece of evidence at
+  // intake rather than at validation, months and an invoice later.
+  @Get("evidenceGaps")
+  @Security("jwt")
+  async evidenceGaps(@Request() request: any, @Query() projectId: string) {
+    try {
+      const { projectRepository, methodologyRepository, sourceDocumentRepository } = await this.scoped(request);
+      const project: any = await new ProjectUseCase(projectRepository).getProjectById(projectId);
+      if (!project || !project.methodologyId) {
+        this.setStatus(400);
+        return new Response().sendResponseFailure("Project or methodology not found", false);
+      }
+      const methodologyId = project.methodologyId._id || project.methodologyId;
+      const methodology: any = await new MethodologyUseCase(methodologyRepository).getMethodologyById(String(methodologyId));
+      const documents = await sourceDocumentRepository.getSourceDocumentsByProjectId(projectId);
+      const report = analyseEvidenceGaps(methodology, project, documents);
+      return new Response().sendResponseSuccess(report, true);
+    } catch (Error) {
+      this.setStatus(500);
+      return new Response().sendResponseFailure("Something went wrong " + Error, false);
     }
   }
 

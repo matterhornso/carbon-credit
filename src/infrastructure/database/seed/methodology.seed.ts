@@ -194,7 +194,7 @@ const VMR0017_GRID_RENEWABLE: IMethodologyInterface = {
     variables: [
       { name: "BE_y", label: "Baseline emissions in year y", source: "derived", sourceRef: "VT0011 grid emission factor x net generation", unit: "tCO2e" },
       { name: "EF_grid_CM_y", label: "Combined-margin grid emission factor", source: "reference", sourceRef: "VT0011 Electricity System Emission Factors (operating margin + build margin, default 50/50 weighting)", unit: "tCO2/MWh" },
-      { name: "EG_facility_y", label: "Net electricity generation delivered to the grid", source: "input", unit: "MWh/yr" },
+      { name: "EG_facility_y", label: "Net electricity generation delivered to the grid", source: "input", sourceRef: "expectedAnnualGeneration", unit: "MWh/yr" },
       { name: "EF_embodied", label: "Technology-specific life-cycle embodied emission factor", source: "reference", sourceRef: "NREL Life Cycle GHG Emissions from Electricity Generation (Sept 2021) — e.g. solar PV 43, wind 13, hydropower 21 gCO2e/kWh", unit: "gCO2e/kWh" },
     ],
     relationship: "ER_y = BE_y - PE_y - LE_y, where PE_y = PE_FF,y + PE_GP,y + PE_HP,y + PE_BESS,y + PE_PSP,y + PE_FSS,y (fossil-fuel, geothermal, hydro-reservoir, BESS/PSP grid-charging, and fire-suppression-agent-release emissions — include only the terms applicable to this project's technology), and LE_y = EG_facility,y x EF_embodied x 1e-3 (life-cycle embodied emissions as a leakage proxy, not a traditional activity-shifting leakage term).",
