@@ -17,6 +17,8 @@ import { ICreateProjectRequest, ISelectMethodologyRequest, ISubmitIntakeRequest,
 import { Util } from '../../utils/Util'
 import { TenantResolver } from '../../services/TenantResolver.service'
 import { analyseEvidenceGaps } from '../../../application/usecases/project_lifecycle/EvidenceGapAnalyzer'
+import { resolveSectionKeys } from '../../../application/usecases/registry/RegistryTemplate'
+import { registryForMethodology } from '../../../application/usecases/registry/RegistryCatalog'
 import { SourceDocumentRepository } from '../../database/SourceDocumentRepository'
 import { SourceDocumentMongoConnection } from '../../../infrastructure/database/helper/database/SourceDocument'
 
@@ -119,7 +121,12 @@ export class ProjectController extends Controller {
 
       const methodologyChanged = String(project.methodologyId?._id || project.methodologyId || '') !== data.methodologyId;
       if (!project.caseDocumentId || methodologyChanged) {
-        const sectionKeys = (methodology.sectionGuidance || []).map((guidance: any) => guidance.section);
+        // Sections come from merging the registry's document template with the
+        // methodology's overlays, not from the methodology alone. For a VCS
+        // methodology this resolves to exactly the list it declared before
+        // (RegistryTemplate.spec asserts that); for a Gold Standard one it
+        // resolves to the GS document, which is the point.
+        const sectionKeys = resolveSectionKeys(registryForMethodology(methodology), methodology);
         const caseDocument: any = await new CaseDocument().create({ projectId: data.projectId, sectionKeys }, caseDocument_useCase);
         await projectRepository.setCaseDocumentId(data.projectId, caseDocument._id);
       }

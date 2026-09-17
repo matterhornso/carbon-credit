@@ -10,6 +10,8 @@
 // order fails here instead of during the next cross-sector run.
 
 import { expect } from 'chai';
+import { resolveSectionKeys } from '../../application/usecases/registry/RegistryTemplate';
+import { registryForMethodology } from '../../application/usecases/registry/RegistryCatalog';
 import { GenerationService } from '../../application/usecases/generation/GenerationService';
 import { LLMService, LLMMessage, LLMResult } from '../../interfaces/services/LLM.service';
 import { PROJECT_STATUSES } from '../project/projectStatus';
@@ -207,10 +209,19 @@ function buildHarness(options: HarnessOptions = {}) {
 }
 
 // The order generateAllSections is contractually expected to produce for a
-// given methodology: the two customer-named expensive sections first, then
-// the methodology's own declared order.
+// given methodology: the two customer-named expensive sections first, then the
+// order the REGISTRY lays the document out in.
+//
+// This changed when the registry document template was split out of the
+// methodology. It used to follow the methodology seed's declared order, which
+// was never a decision - it was whatever order the seed happened to be typed
+// in. The document order is a property of the registry's template (VCS puts
+// safeguards ninth; Gold Standard puts its safeguarding assessment second), and
+// it is the order the VVB reads in, so it is the order sections are generated
+// in. The section SET is unchanged, which is the part that would have been a
+// regression; only the sequence moved.
 function expectedOrderFor(methodology: any): string[] {
-  const declared = methodology.sectionGuidance.map((g: any) => g.section);
+  const declared = resolveSectionKeys(registryForMethodology(methodology), methodology);
   const priority = ['additionality', 'baseline_scenario'].filter((k) => declared.includes(k));
   return [...priority, ...declared.filter((k: string) => !priority.includes(k))];
 }
@@ -219,7 +230,7 @@ describe('Test GenerationService orchestration', () => {
 
   describe('generateAllSections section ordering', () => {
 
-    it('generates additionality and baseline_scenario first, then the methodology order (VM0047)', async () => {
+    it('generates additionality and baseline_scenario first, then the registry document order (VM0047)', async () => {
       const { service, caseDocumentRepository } = buildHarness();
       await service.generateAllSections(PROJECT_ID, ACTOR);
 
@@ -229,8 +240,8 @@ describe('Test GenerationService orchestration', () => {
         .deep.equals(expectedOrderFor(VM0047_CENSUS_BASED));
     });
 
-    // The genericity claim at the orchestration layer: identical code path,
-    // a structurally different methodology, order follows ITS seed data.
+    // The genericity claim at the orchestration layer: identical code path, a
+    // structurally different methodology, order follows its resolved document.
     it('follows the same contract for VMR0017 with no code differences', async () => {
       const { service, caseDocumentRepository } = buildHarness({ methodology: VMR0017_GRID_RENEWABLE });
       await service.generateAllSections(PROJECT_ID, ACTOR);

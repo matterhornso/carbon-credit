@@ -4,6 +4,8 @@
 // persists the result, and drives the CASE_GENERATING lifecycle transition.
 // This is the usecase layer for generation — GenerationController stays thin.
 
+import { resolveGuidance as resolveGuidanceForMethodology } from "../registry/RegistryTemplate";
+import { registryForMethodology } from "../registry/RegistryCatalog";
 import { IProjectRepository } from "../../repositories/IProjectRepository";
 import { IMethodologyRepository } from "../../repositories/IMethodologyRepository";
 import { ICaseDocumentRepository } from "../../repositories/ICaseDocumentRepository";
@@ -88,7 +90,7 @@ export class GenerationService {
     const context = await this.loadContext(projectId);
     await this.ensureGeneratingStatus(context.project);
 
-    const guidance = context.methodology.sectionGuidance || [];
+    const guidance = resolveGuidanceForMethodology(registryForMethodology(context.methodology), context.methodology);
     const priority = [FIXED_SHAPE_SECTIONS.ADDITIONALITY, FIXED_SHAPE_SECTIONS.BASELINE_SCENARIO];
     const orderedKeys = [
       ...priority.filter((key) => guidance.some((g) => g.section === key)),
@@ -332,8 +334,13 @@ export class GenerationService {
     }
   }
 
+  // Guidance is the registry's expectation for the section joined with the
+  // methodology's, not the methodology's alone. A registry-required section the
+  // methodology says nothing about (Gold Standard's SDG contributions, for a
+  // Verra methodology) still resolves - it generates from the registry half.
   private resolveGuidance(methodology: IMethodologyInterface, sectionKey: string): ISectionGuidance {
-    const guidance = (methodology.sectionGuidance || []).find((g) => g.section === sectionKey);
+    const resolved = resolveGuidanceForMethodology(registryForMethodology(methodology), methodology);
+    const guidance = resolved.find((g) => g.section === sectionKey);
     if (!guidance) throw new Error(`No section guidance found for '${sectionKey}' on methodology '${methodology.code}'`);
     return guidance;
   }
