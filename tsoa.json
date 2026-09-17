@@ -6,8 +6,12 @@
   "entryFile": "./src/infrastructure/server.ts",
   "specVersion": 3,
   "outputDirectory": "./api/dist",
+  "_controllerPathGlobs_note": "Explicit allowlist, NOT a wildcard. A new controller must be listed here to be routed. This is deliberate: the previous wildcard silently published ProjectSectionA-E (tenant-unscoped) and ReportController (3 of 4 endpoints with no auth middleware at all). tsoa v3 ignores '!' negation globs silently, so exclusion is not an option. RoutingSurface.spec.ts asserts the served surface matches this list.",
   "controllerPathGlobs": [
-    "src/interfaces/controllers/**/*Controller.ts"
+    "src/interfaces/controllers/attachment/AttachmentController.ts",
+    "src/interfaces/controllers/generation/GenerationController.ts",
+    "src/interfaces/controllers/methodology/MethodologyController.ts",
+    "src/interfaces/controllers/project/ProjectController.ts"
   ],
   "specMerging": "recursive",
   "spec": {
