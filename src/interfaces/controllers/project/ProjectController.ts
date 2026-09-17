@@ -281,14 +281,19 @@ export class ProjectController extends Controller {
 
   // Scoped to the caller's own department — the prior version trusted a
   // caller-supplied user_id query param with no auth check at all.
+  // Paged. Previously this returned every project in the tenant in one
+  // response - unremarkable at a dozen projects, and a direct obstacle to the
+  // portfolio sizes this platform exists to support. `limit` is clamped to
+  // PROJECT_PAGE_SIZE_MAX in the data layer rather than rejected, and the
+  // response carries `total` so a caller knows what it did not receive.
   @Get("getAllProjects")
   @Security("jwt")
-  async getAllProjects(@Request() request: any, @Query() status?: string) {
+  async getAllProjects(@Request() request: any, @Query() status?: string, @Query() limit?: number, @Query() skip?: number) {
     try {
-      const { projectRepository, methodologyRepository, caseDocumentRepository } = await this.scoped(request);
+      const { projectRepository } = await this.scoped(request);
       let _department: any = await new Util().getDepartmentInfo(request.user);
       const project_useCase = new ProjectUseCase(projectRepository);
-      let result = await project_useCase.getAllProjects({ proponentOrgId: _department._id, status })
+      let result = await project_useCase.getAllProjects({ proponentOrgId: _department._id, status, limit, skip })
       return new Response().sendResponseSuccess(result, true);
     } catch (Error) {
       this.setStatus(500);

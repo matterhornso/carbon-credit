@@ -1,5 +1,5 @@
 import { Document, Model } from "mongoose";
-import { IProjectInterface } from "../../../../domain/project/projectInterface"
+import { IProjectInterface, IProjectPage } from "../../../../domain/project/projectInterface"
 
 export interface IProjectDocument extends IProjectInterface, Document { }
 
@@ -10,5 +10,5 @@ export interface IProjectModel extends Model<IProjectDocument> {
   setCaseDocumentId: (this: IProjectModel, tenantId: string, id: string, caseDocumentId: string) => Promise<IProjectInterface | null>;
   addAttachment: (this: IProjectModel, tenantId: string, id: string, sourceDocumentId: string) => Promise<IProjectInterface | null>;
   getProjectById: (this: IProjectModel, tenantId: string, id: string) => Promise<IProjectInterface | null>;
-  getAllProjects: (this: IProjectModel, tenantId: string, filter?: any) => Promise<IProjectInterface[]>;
+  getAllProjects: (this: IProjectModel, tenantId: string, filter?: any) => Promise<IProjectPage>;
 }

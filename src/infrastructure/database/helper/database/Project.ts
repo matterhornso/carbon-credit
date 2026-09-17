@@ -1,5 +1,5 @@
 import { CreateProject, UpdateProject } from "../../../../domain";
-import { IProjectInterface } from "../../../../domain/project/projectInterface";
+import { IProjectInterface, IProjectPage } from "../../../../domain/project/projectInterface";
 import { ProjectConnection } from "../../../../interfaces/database/IDBConnection"
 import { ProjectModel } from "../../modal/project/project.model";
 
@@ -33,7 +33,7 @@ export class ProjectMongoConnection extends ProjectConnection {
     return project_res;
   }
 
-  async getAllProjects(tenantId: string, filter?: any): Promise<IProjectInterface[]> {
+  async getAllProjects(tenantId: string, filter?: any): Promise<IProjectPage> {
     let project_res = await ProjectModel.getAllProjects(tenantId, filter);
     return project_res;
   }

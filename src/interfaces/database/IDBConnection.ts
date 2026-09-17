@@ -1,5 +1,5 @@
 import { CreateProject, CreateProjectSectionA, CreateProjectSectionB, CreateProjectSectionC, CreateProjectSectionD, CreateProjectSectionE, CreateReport, UpdateProject, UpdateReport, CreateMethodology, CreateCaseDocument, CreateSourceDocument, CreateAuditEvent } from "../../domain";
-import { IProjectInterface } from "../../domain/project/projectInterface";
+import { IProjectInterface, IProjectPage } from "../../domain/project/projectInterface";
 import { IProjectSectionA } from "../../domain/project_section_a/projectSectionAInterface";
 import { IProjectSectionB } from "../../domain/project_section_b/projectSectionBInterface";
 import { IProjectSectionC } from "../../domain/project_section_c/projectSectionCInterface";
@@ -21,7 +21,7 @@ export abstract class ProjectConnection {
   abstract transitionStatus(tenantId: string, id: string, status: string): Promise<IProjectInterface | null>
   abstract setCaseDocumentId(tenantId: string, id: string, caseDocumentId: string): Promise<IProjectInterface | null>
   abstract addAttachment(tenantId: string, id: string, sourceDocumentId: string): Promise<IProjectInterface | null>
-  abstract getAllProjects(tenantId: string, filter?:any): Promise<IProjectInterface[]>
+  abstract getAllProjects(tenantId: string, filter?:any): Promise<IProjectPage>
   abstract getProjectById(tenantId: string, id:string): Promise<IProjectInterface | null>
 }
 

@@ -9,6 +9,7 @@ import logger from '../interfaces/utils/Logger';
 import * as client from 'prom-client';
 import helmet from "helmet";
 import { MongoConnection } from "./database/MongoConnection";
+import { generationLimiter, uploadLimiter, generalLimiter } from "./rateLimit";
 const cors = require('cors');
 
 dotenv.config({
@@ -20,6 +21,19 @@ const router = express();
 router.disable("x-powered-by");
 // Express configuration
 router.set("port", process.env.PORT || 4001);
+
+// How many reverse proxies sit in front of this process. Rate limiting counts
+// per client IP, and express only reads X-Forwarded-For when it is told how far
+// to trust it, so this number decides whether the limiter works at all:
+//   0 (default, local)  - req.ip is the socket peer. Correct with no proxy.
+//   1 (Railway, and any single edge) - the last XFF hop is the real client.
+//   too low in production - every request shares one bucket, so one busy tenant
+//                           throttles everyone.
+//   too high / `true`     - the client picks its own XFF and walks past the
+//                           limiter entirely.
+// An env var rather than a constant because the right answer is a property of
+// the deployment, not of the code.
+router.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 0));
 router.use(bodyParser.json());
 router.use(bodyParser.urlencoded({ extended: true }));
 router.use(cors({
@@ -79,6 +93,14 @@ router.use("/docs", swaggerUi.serve, async (_req: ExRequest, res: ExResponse) =>
     swaggerUi.generateHTML(await import("../../api/dist/swagger.json"))
   );
 });
+
+// Rate limiting. Mounted after the health probes on purpose: an orchestrator
+// polling /readyz must never be throttled into reporting the service dead.
+// Specific limiters first - express runs the first match, so the general
+// limiter below would otherwise swallow the metered paths.
+router.use("/api/v1/generation", generationLimiter);
+router.use("/api/v1/attachment/upload", uploadLimiter);
+router.use(generalLimiter);
 
 router.use(async function (req, res: any, next) {
   const oldWrite = res.write;

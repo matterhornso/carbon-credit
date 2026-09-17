@@ -2,7 +2,7 @@ import { IProjectRepository } from '../../application/repositories/IProjectRepos
 import { CreateProject, UpdateProject } from '../../domain'
 import { TenantScope } from '../../domain/tenant/TenantScope'
 import { ProjectConnection } from './IDBConnection'
-import { IProjectInterface } from "../../domain/project/projectInterface";
+import { IProjectInterface, IProjectPage } from "../../domain/project/projectInterface";
 
 // The scope is bound once, at construction, and supplied to every call. That
 // keeps the abstract repository signature the usecases depend on unchanged —
@@ -38,7 +38,7 @@ export class ProjectRepository extends IProjectRepository {
     return await this.connection.addAttachment(this.scope.tenantId, id, sourceDocumentId);
   }
 
-  async getAllProjects(filter?: any): Promise<IProjectInterface[]> {
+  async getAllProjects(filter?: any): Promise<IProjectPage> {
     return await this.connection.getAllProjects(this.scope.tenantId, filter);
   }
 

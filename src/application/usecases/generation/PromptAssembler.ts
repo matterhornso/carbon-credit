@@ -14,6 +14,24 @@ import { ISourceExcerpt, IGeneratedCitation } from "./generationTypes";
 // treat a cut sentence as the whole source.
 const MAX_EXCERPT_CHARS = 4000;
 
+// Per-excerpt truncation bounded the size of one document but nothing bounded
+// how many documents entered a prompt. Fifty uploads meant a fifty-times-larger
+// prompt at fifty times the cost, per section, for every section - the single
+// largest uncontrolled cost in the platform.
+//
+// The danger in fixing it is worse than the cost it fixes: an evidence document
+// that is silently dropped produces a section that says "evidence needed" for
+// something the user *did* upload. That reads as a platform lie. So the rule is
+// cap, but never silently - omissions are named in the prompt and returned to
+// the caller.
+export const MAX_EXCERPTS = 12;
+export const MAX_TOTAL_EXCERPT_CHARS = 30000;
+
+export interface ISourceExcerptSelection {
+  excerpts: ISourceExcerpt[];
+  omitted: { filename: string; reason: 'excerpt_count_cap' | 'total_size_cap' }[];
+}
+
 const RIGOR_SYSTEM_PROMPT = `You are drafting content for a carbon credit Project Design Document (PDD) case, prepared by a professional carbon project developer for eventual third-party validation (a VVB).
 
 Rules, non-negotiable:
@@ -23,30 +41,81 @@ Rules, non-negotiable:
 4. If the methodology's section guidance below tells you NOT to assert something without a source, follow that instruction exactly, even if it leaves the section incomplete.
 5. When citing an uploaded source document, the citation's sourceDetail must be exactly the excerpt ID as given (e.g. "SRC-1"), nothing else — no paraphrasing the filename.`;
 
-export function buildSourceExcerpts(
+export function selectSourceExcerpts(
   sourceDocuments: ISourceDocumentInterface[],
   sectionKey: string
-): ISourceExcerpt[] {
+): ISourceExcerptSelection {
   const relevant = (sourceDocuments || []).filter((doc) => {
     if (!doc.extractedText) return false;
     if (!doc.linkedSections || doc.linkedSections.length === 0) return true; // unlinked = general-purpose
     return doc.linkedSections.includes(sectionKey);
   });
-  return relevant.map((doc, index) => ({
-    id: `SRC-${index + 1}`,
-    filename: doc.filename || `document-${index + 1}`,
-    excerpt: (doc.extractedText || '').slice(0, MAX_EXCERPT_CHARS),
-  }));
+
+  // When something has to be dropped, drop the general-purpose uploads before
+  // the ones a human explicitly linked to this section. An unlinked document is
+  // a guess that it might be relevant; a linked one is a statement that it is.
+  const byRelevance = [...relevant].sort((a, b) => {
+    const aLinked = (a.linkedSections || []).includes(sectionKey) ? 0 : 1;
+    const bLinked = (b.linkedSections || []).includes(sectionKey) ? 0 : 1;
+    return aLinked - bLinked;
+  });
+
+  const excerpts: ISourceExcerpt[] = [];
+  const omitted: ISourceExcerptSelection['omitted'] = [];
+  let totalChars = 0;
+
+  byRelevance.forEach((doc) => {
+    const filename = doc.filename || `document-${excerpts.length + 1}`;
+
+    if (excerpts.length >= MAX_EXCERPTS) {
+      omitted.push({ filename, reason: 'excerpt_count_cap' });
+      return;
+    }
+
+    const excerpt = (doc.extractedText || '').slice(0, MAX_EXCERPT_CHARS);
+    if (totalChars + excerpt.length > MAX_TOTAL_EXCERPT_CHARS) {
+      omitted.push({ filename, reason: 'total_size_cap' });
+      return;
+    }
+
+    totalChars += excerpt.length;
+    // IDs are assigned over the documents that actually made it in, so SRC-n is
+    // always contiguous and always resolvable - a citation can never point at a
+    // document the model was never shown.
+    excerpts.push({ id: `SRC-${excerpts.length + 1}`, filename, excerpt });
+  });
+
+  return { excerpts, omitted };
 }
 
-function formatExcerptsBlock(excerpts: ISourceExcerpt[]): string {
+/**
+ * Back-compatible view for callers that only want the excerpts. Kept so the
+ * omission list is an opt-in rather than a signature change at every call site,
+ * but new callers should prefer selectSourceExcerpts and surface `omitted`.
+ */
+export function buildSourceExcerpts(
+  sourceDocuments: ISourceDocumentInterface[],
+  sectionKey: string
+): ISourceExcerpt[] {
+  return selectSourceExcerpts(sourceDocuments, sectionKey).excerpts;
+}
+
+function formatExcerptsBlock(excerpts: ISourceExcerpt[], omitted: ISourceExcerptSelection['omitted'] = []): string {
+  // Named separately from "none supplied": a section with no documents and a
+  // section whose documents were all dropped for size are different situations,
+  // and the model must not describe the second as the first.
+  const omissionNotice = omitted.length === 0 ? '' :
+    `\n\nNOT SHOWN TO YOU (${omitted.length} document(s) exceeded this request's size budget): ${omitted.map(o => o.filename).join(', ')}. ` +
+    `These were uploaded by the project team but could not be included. Do not state or imply that they were not provided. ` +
+    `Where a claim would depend on them, say the supporting document exists but was not available in this pass.`;
+
   if (excerpts.length === 0) {
-    return 'UPLOADED SOURCE DOCUMENTS: none supplied for this section. Any claim that would normally need a document citation must instead be flagged as needing evidence.';
+    return 'UPLOADED SOURCE DOCUMENTS: none supplied for this section. Any claim that would normally need a document citation must instead be flagged as needing evidence.' + omissionNotice;
   }
   const blocks = excerpts.map(
     (ex) => `[${ex.id}] (${ex.filename}, possibly truncated)\n${ex.excerpt}`
   );
-  return `UPLOADED SOURCE DOCUMENTS (cite by ID exactly as shown):\n\n${blocks.join('\n\n')}`;
+  return `UPLOADED SOURCE DOCUMENTS (cite by ID exactly as shown):\n\n${blocks.join('\n\n')}` + omissionNotice;
 }
 
 function formatIntakeBlock(project: IProjectInterface): string {
@@ -68,7 +137,7 @@ export function buildAdditionalityPrompt(
   methodology: IMethodologyInterface,
   project: IProjectInterface,
   guidance: ISectionGuidance | undefined,
-  excerpts: ISourceExcerpt[]
+  selection: ISourceExcerptSelection
 ): LLMMessage[] {
   const tiers = methodology.additionalityTiers || [];
   const tierList = tiers
@@ -96,7 +165,7 @@ Include one entry in "tiers" for every tier listed below, in the order given.`;
     `ADDITIONALITY TIERS APPLICABLE TO THIS METHODOLOGY:\n${tierList}`,
     guidance?.promptFragment ? `SECTION-SPECIFIC GUIDANCE: ${guidance.promptFragment}` : '',
     formatIntakeBlock(project),
-    formatExcerptsBlock(excerpts),
+    formatExcerptsBlock(selection.excerpts, selection.omitted),
     schemaDescription,
   ].filter(Boolean).join('\n\n');
 
@@ -110,7 +179,7 @@ export function buildBaselinePrompt(
   methodology: IMethodologyInterface,
   project: IProjectInterface,
   guidance: ISectionGuidance | undefined,
-  excerpts: ISourceExcerpt[]
+  selection: ISourceExcerptSelection
 ): LLMMessage[] {
   const formula: IBaselineFormula | undefined = methodology.baselineFormula;
   const variablesList = (formula?.variables || [])
@@ -132,7 +201,7 @@ Include one entry in "variables" for every variable listed below.`;
     formula ? `BASELINE FORMULA: ${formula.description}\nRelationship: ${formula.relationship}\nVariables:\n${variablesList}` : 'No declarative baseline formula is modeled for this methodology — describe the baseline scenario narratively only.',
     guidance?.promptFragment ? `SECTION-SPECIFIC GUIDANCE: ${guidance.promptFragment}` : '',
     formatIntakeBlock(project),
-    formatExcerptsBlock(excerpts),
+    formatExcerptsBlock(selection.excerpts, selection.omitted),
     schemaDescription,
   ].filter(Boolean).join('\n\n');
 
@@ -146,7 +215,7 @@ export function buildGenericStructuredPrompt(
   methodology: IMethodologyInterface,
   guidance: ISectionGuidance,
   project: IProjectInterface,
-  excerpts: ISourceExcerpt[]
+  selection: ISourceExcerptSelection
 ): LLMMessage[] {
   const schemaDescription = `Respond with ONLY a JSON object of this exact shape (no markdown fence, no commentary):
 {
@@ -160,7 +229,7 @@ export function buildGenericStructuredPrompt(
     `SECTION: ${guidance.section}`,
     `SECTION-SPECIFIC GUIDANCE: ${guidance.promptFragment}`,
     formatIntakeBlock(project),
-    formatExcerptsBlock(excerpts),
+    formatExcerptsBlock(selection.excerpts, selection.omitted),
     schemaDescription,
   ].filter(Boolean).join('\n\n');
 
@@ -180,7 +249,7 @@ export function buildNarrativePrompt(
   methodology: IMethodologyInterface,
   guidance: ISectionGuidance,
   project: IProjectInterface,
-  excerpts: ISourceExcerpt[],
+  selection: ISourceExcerptSelection,
   priorTurns: LLMMessage[] = []
 ): LLMMessage[] {
   const userContent = [
@@ -188,7 +257,7 @@ export function buildNarrativePrompt(
     `SECTION: ${guidance.section}`,
     `SECTION-SPECIFIC GUIDANCE: ${guidance.promptFragment}`,
     formatIntakeBlock(project),
-    formatExcerptsBlock(excerpts),
+    formatExcerptsBlock(selection.excerpts, selection.omitted),
     NARRATIVE_CITATION_INSTRUCTION,
   ].filter(Boolean).join('\n\n');
 

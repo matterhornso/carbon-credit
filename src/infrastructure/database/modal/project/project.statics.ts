@@ -89,6 +89,13 @@ export async function getProjectById(
   return record || null;
 }
 
+// A page size nobody asked for is still a page size: without one this returned
+// every project in the tenant, which is fine at a dozen and a problem at the
+// portfolio sizes this platform exists to support. DEFAULT applies when the
+// caller says nothing; MAX is the ceiling a caller cannot argue past.
+export const PROJECT_PAGE_SIZE_DEFAULT = 50;
+export const PROJECT_PAGE_SIZE_MAX = 200;
+
 export async function getAllProjects(
   this: Model<IProjectModel>,
   tenantId: string,
@@ -100,6 +107,24 @@ export async function getAllProjects(
   if (filter?.createdByUserId) query.createdByUserId = filter.createdByUserId;
   if (filter?.status) query.status = filter.status;
   query.tenantId = tenantId;
-  const records = await this.find(query).sort({ createdAt: -1 });
-  return records || [];
+
+  // Clamp rather than reject. A caller asking for 10,000 wants "as many as I
+  // can have", and failing the request teaches them nothing; capping gives them
+  // the answer plus a `total` that says what they did not get.
+  const requestedLimit = Number(filter?.limit);
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(Math.floor(requestedLimit), PROJECT_PAGE_SIZE_MAX)
+    : PROJECT_PAGE_SIZE_DEFAULT;
+
+  const requestedSkip = Number(filter?.skip);
+  const skip = Number.isFinite(requestedSkip) && requestedSkip > 0 ? Math.floor(requestedSkip) : 0;
+
+  // countDocuments runs the same query, so `total` reflects the tenant filter
+  // too - it can never report rows the caller is not allowed to see.
+  const [items, total] = await Promise.all([
+    this.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    this.countDocuments(query),
+  ]);
+
+  return { items: items || [], total, limit, skip };
 }

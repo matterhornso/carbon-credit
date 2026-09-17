@@ -19,7 +19,8 @@ import AuditEventUseCase from "../audit_event/AuditEvent";
 import { PROJECT_STATUSES } from "../../../domain/project/projectStatus";
 import { assertValidTransition } from "../project_lifecycle/ProjectLifecycle";
 import {
-  buildSourceExcerpts,
+  selectSourceExcerpts,
+  ISourceExcerptSelection,
   buildAdditionalityPrompt,
   buildBaselinePrompt,
   buildGenericStructuredPrompt,
@@ -45,7 +46,7 @@ interface IGenerationContext {
   project: IProjectInterface & { _id: string };
   methodology: IMethodologyInterface;
   caseDocument: ICaseDocumentInterface & { _id: string };
-  excerpts: ISourceExcerpt[];
+  excerptSelection: ISourceExcerptSelection;
 }
 
 const MODEL_LABEL = 'gmi-cloud:minimax-m2.7';
@@ -107,7 +108,7 @@ export class GenerationService {
       if (options.onlyMissing && currentSection && COMPLETED_SECTION_STATUSES.includes(currentSection.status)) continue;
 
       try {
-        const sectionContext = { ...context, excerpts: buildSourceExcerpts(await this.getAllSourceDocuments(projectId), key) };
+        const sectionContext = { ...context, excerptSelection: selectSourceExcerpts(await this.getAllSourceDocuments(projectId), key) };
         result = await this.runSectionGeneration(sectionContext, key, actor);
         generated.push(key);
       } catch (error: any) {
@@ -191,10 +192,10 @@ export class GenerationService {
     }));
     priorTurns.push({ role: 'user', content: userMessage });
 
-    const messages = buildNarrativePrompt(context.methodology, guidance, context.project, context.excerpts, priorTurns);
+    const messages = buildNarrativePrompt(context.methodology, guidance, context.project, context.excerptSelection, priorTurns);
     const result = await this.llmService.chatCompletion(messages);
     const { text, citations } = parseNarrativeCitations(result.content);
-    const validatedCitations = validateCitations(citations, context.excerpts);
+    const validatedCitations = validateCitations(citations, context.excerptSelection.excerpts);
 
     const updated = await this.caseDocumentRepository.updateSection(new UpdateCaseDocumentSection({
       caseDocumentId: String(context.caseDocument._id),
@@ -219,7 +220,7 @@ export class GenerationService {
 
   private async runSectionGeneration(context: IGenerationContext, sectionKey: string, actor: IGenerationActor): Promise<ICaseDocumentInterface> {
     const guidance = this.resolveGuidance(context.methodology, sectionKey);
-    const warnings = await this.detectContradictions(context.project, context.excerpts);
+    const warnings = await this.detectContradictions(context.project, context.excerptSelection.excerpts);
 
     let content: unknown;
     let citations: IGeneratedCitation[];
@@ -227,34 +228,34 @@ export class GenerationService {
     let responseForAudit: string;
 
     if (sectionKey === FIXED_SHAPE_SECTIONS.ADDITIONALITY) {
-      const messages = buildAdditionalityPrompt(context.methodology, context.project, guidance, context.excerpts);
+      const messages = buildAdditionalityPrompt(context.methodology, context.project, guidance, context.excerptSelection);
       const parsed = await this.llmService.structuredCompletion<IAdditionalityGenerationContent>(messages);
-      parsed.tiers.forEach((tier) => { tier.citations = validateCitations(tier.citations, context.excerpts); });
+      parsed.tiers.forEach((tier) => { tier.citations = validateCitations(tier.citations, context.excerptSelection.excerpts); });
       content = parsed;
       citations = parsed.tiers.reduce((acc: IGeneratedCitation[], tier) => acc.concat(tier.citations), []);
       promptForAudit = messages[messages.length - 1].content;
       responseForAudit = JSON.stringify(parsed);
     } else if (sectionKey === FIXED_SHAPE_SECTIONS.BASELINE_SCENARIO) {
-      const messages = buildBaselinePrompt(context.methodology, context.project, guidance, context.excerpts);
+      const messages = buildBaselinePrompt(context.methodology, context.project, guidance, context.excerptSelection);
       const parsed = await this.llmService.structuredCompletion<IBaselineGenerationContent>(messages);
-      parsed.variables.forEach((v) => { v.citations = validateCitations(v.citations, context.excerpts); });
+      parsed.variables.forEach((v) => { v.citations = validateCitations(v.citations, context.excerptSelection.excerpts); });
       content = parsed;
       citations = parsed.variables.reduce((acc: IGeneratedCitation[], v) => acc.concat(v.citations), []);
       promptForAudit = messages[messages.length - 1].content;
       responseForAudit = JSON.stringify(parsed);
     } else if (guidance.contentType === 'structured') {
-      const messages = buildGenericStructuredPrompt(context.methodology, guidance, context.project, context.excerpts);
+      const messages = buildGenericStructuredPrompt(context.methodology, guidance, context.project, context.excerptSelection);
       const parsed = await this.llmService.structuredCompletion<IGenericStructuredContent>(messages);
-      parsed.citations = validateCitations(parsed.citations, context.excerpts);
+      parsed.citations = validateCitations(parsed.citations, context.excerptSelection.excerpts);
       content = parsed;
       citations = parsed.citations;
       promptForAudit = messages[messages.length - 1].content;
       responseForAudit = JSON.stringify(parsed);
     } else {
-      const messages = buildNarrativePrompt(context.methodology, guidance, context.project, context.excerpts);
+      const messages = buildNarrativePrompt(context.methodology, guidance, context.project, context.excerptSelection);
       const result = await this.llmService.chatCompletion(messages);
       const { text, citations: rawCitations } = parseNarrativeCitations(result.content);
-      const validated = validateCitations(rawCitations, context.excerpts);
+      const validated = validateCitations(rawCitations, context.excerptSelection.excerpts);
       content = { text, citations: validated };
       citations = validated;
       promptForAudit = messages[messages.length - 1].content;
@@ -365,9 +366,9 @@ export class GenerationService {
     if (!caseDocument) throw new Error('Project has no case document — select a methodology first');
 
     const sourceDocuments = await this.sourceDocumentRepository.getSourceDocumentsByProjectId(projectId);
-    const excerpts = sectionKey ? buildSourceExcerpts(sourceDocuments, sectionKey) : [];
+    const excerptSelection = sectionKey ? selectSourceExcerpts(sourceDocuments, sectionKey) : { excerpts: [], omitted: [] };
 
-    return { project, methodology, caseDocument, excerpts };
+    return { project, methodology, caseDocument, excerptSelection };
   }
 
   private async recordAudit(projectId: string, actor: IGenerationActor, eventType: string, before?: any, after?: any): Promise<void> {
