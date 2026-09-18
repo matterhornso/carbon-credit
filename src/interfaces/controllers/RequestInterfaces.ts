@@ -43,15 +43,6 @@ export interface IGenerateCoverNoteRequest {
   projectId: string;
 }
 
-export interface ICreateReportRequest {
-  project_id: string;
-  current_month?: string;
-  next_date?: Date;
-  quantity?: string;
-  ghg_reduction_explanation?: string;
-  id?:string;
-}
-
 export interface ISuperAdminRequest {
   username: string,
   password: string,

@@ -2,9 +2,6 @@ export { CreateProject } from "./project/CreateProject";
 export { UpdateProject } from "./project/UpdateProject";
 export { Project } from "./project/Project";
 
-export { CreateReport} from "./report/CreateReport";
-export { UpdateReport } from "./report/UpdateReport";
-export { Report } from "./report/Report";
 
 export { CreateProjectSectionA } from "./project_section_a/CreateProjectSectionA";
 export { ProjectSectionA } from "./project_section_a/ProjectSectionA";

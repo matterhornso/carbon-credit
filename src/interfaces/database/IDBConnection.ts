@@ -1,11 +1,10 @@
-import { CreateProject, CreateProjectSectionA, CreateProjectSectionB, CreateProjectSectionC, CreateProjectSectionD, CreateProjectSectionE, CreateReport, UpdateProject, UpdateReport, CreateMethodology, CreateCaseDocument, CreateSourceDocument, CreateAuditEvent } from "../../domain";
+import { CreateProject, CreateProjectSectionA, CreateProjectSectionB, CreateProjectSectionC, CreateProjectSectionD, CreateProjectSectionE, UpdateProject, CreateMethodology, CreateCaseDocument, CreateSourceDocument, CreateAuditEvent } from "../../domain";
 import { IProjectInterface, IProjectPage } from "../../domain/project/projectInterface";
 import { IProjectSectionA } from "../../domain/project_section_a/projectSectionAInterface";
 import { IProjectSectionB } from "../../domain/project_section_b/projectSectionBInterface";
 import { IProjectSectionC } from "../../domain/project_section_c/projectSectionCInterface";
 import { IProjectSectionD } from "../../domain/project_section_d/projectSectionDInterface";
 import { IProjectSectionE } from "../../domain/project_section_e/projectSectionEInterface";
-import { IReportInterface } from "../../domain/report/reportInterface";
 import { IMethodologyInterface } from "../../domain/methodology/methodologyInterface";
 import { ICaseDocumentInterface } from "../../domain/case_document/caseDocumentInterface";
 import { UpdateCaseDocumentSection } from "../../domain/case_document/UpdateCaseDocumentSection";
@@ -47,13 +46,6 @@ export abstract class SourceDocumentConnection {
 export abstract class AuditEventConnection {
   abstract createAuditEvent(tenantId: string, query: CreateAuditEvent): Promise<IAuditEventInterface>
   abstract getEventsByProjectId(tenantId: string, projectId: string): Promise<IAuditEventInterface[]>
-}
-
-export abstract class ReportConnection {
-  abstract createReport(query: CreateReport): Promise<IReportInterface>
-  abstract updateReport(query: UpdateReport): Promise<IReportInterface>
-  abstract getAllReports(filter?:any): Promise<IReportInterface>
-  abstract getReportById(id:string): Promise<IReportInterface>
 }
 
 export abstract class ProjectSectionAConnection {

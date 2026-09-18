@@ -122,6 +122,23 @@ describe('Test the served routing surface', () => {
 
   // The specific holes the audit found, pinned by name so nobody reintroduces
   // them by "fixing" the tsoa allowlist back to a wildcard.
+  //
+  // IMPORTANT, and the correction to a claim made when this file was written:
+  // projectSectionA-E are NOT dead. The webapp reaches them through
+  // dataCollectionCalls -> useProject.moveToNextSection -> IssuanceDataCollection,
+  // which is a live ISSUER route (/issuance-data-collection) that four
+  // components navigate to. The original audit traced Endpoints.ts consumers and
+  // missed the API-wrapper layer above them.
+  //
+  // They are held out of the served surface anyway, pending a decision, because
+  // their five collections have no tenantId field at all - scoping them is a
+  // schema migration, not a constructor argument. The two live options are to
+  // retire the feature with its frontend route, or to migrate the collections
+  // and scope them. Re-routing them as they stand would restore a genuine
+  // cross-tenant read, so that is the one thing this test exists to prevent.
+  //
+  // report/* is a different case and stays deleted: no caller anywhere, and
+  // three of its four endpoints had no authentication middleware at all.
   it('does not serve the retired legacy endpoints', () => {
     const retired = mounted
       .map(r => r.route)
@@ -144,8 +161,6 @@ describe('Test the served routing surface', () => {
  * unscoped, which is why the auth check above is necessary but not sufficient.
  */
 describe('Test tenant scoping at the controller boundary', () => {
-
-  const CONTROLLER_DIR = path.join(__dirname, '../../interfaces/controllers');
 
   // Repositories that hold per-tenant rows. Constructing one of these without a
   // TenantScope is a compile error by design (the constructor requires it), so
