@@ -19,6 +19,7 @@ import { TenantResolver } from '../../services/TenantResolver.service'
 import { JobQueue } from '../../../application/usecases/job/JobQueue'
 import { CreateJob } from '../../../domain/job/CreateJob'
 import { JOB_TYPES } from '../../../domain/job/jobInterface'
+import { generationBudget, UserBudgetExceededError } from '../../../application/usecases/ratelimit/UserBudget'
 
 @Route('generation')
 export class GenerationController extends Controller {
@@ -61,10 +62,18 @@ export class GenerationController extends Controller {
   async generateSection(@Body() data: IGenerateSectionRequest, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
+      generationBudget.consume(actor.userId);
       const { generationService } = await this.scoped(request);
       const result = await generationService.generateSection(data.projectId, data.sectionKey, actor);
       return new Response().sendResponseSuccess(result, true);
     } catch (error: any) {
+      // A spent budget is 429, not 400: it is a rate condition the caller can
+      // retry, and a monitoring system reading it as a client error would be
+      // wrong about both the cause and the fix.
+      if (error instanceof UserBudgetExceededError) {
+        this.setStatus(429);
+        return new Response().sendResponseFailure(error.message, false);
+      }
       this.setStatus(400);
       return new Response().sendResponseFailure(error?.message || "Something went wrong", false);
     }
@@ -85,6 +94,11 @@ export class GenerationController extends Controller {
   async generateAll(@Body() data: IGenerateAllSectionsRequest, @Request() request: any) {
     try {
       const actor = await this.getActor(request);
+      // Charged at enqueue, not at execution. The job runs later on a worker
+      // with no request in scope, and the cost is committed the moment the
+      // queue accepts it - deferring the charge would let a caller fill the
+      // queue for free and discover the limit only when the bill arrived.
+      generationBudget.consume(actor.userId);
       const scope = await this.tenantResolver.scopeFor(
         request?.user?._user_uuid || request?.headers?.['_user_uuid']
       );
@@ -100,6 +114,10 @@ export class GenerationController extends Controller {
         { jobId: String(job._id), status: job.status, projectId: data.projectId }, true
       );
     } catch (error: any) {
+      if (error instanceof UserBudgetExceededError) {
+        this.setStatus(429);
+        return new Response().sendResponseFailure(error.message, false);
+      }
       this.setStatus(400);
       return new Response().sendResponseFailure(error?.message || "Something went wrong", false);
     }

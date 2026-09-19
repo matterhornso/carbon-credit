@@ -15,6 +15,7 @@ import { LLMService } from '../../services/LLM.service'
 import { IReviewCaseRequest, IResolveFindingRequest } from '../RequestInterfaces'
 import { Util } from '../../utils/Util'
 import { TenantResolver } from '../../services/TenantResolver.service'
+import { preValidationBudget, UserBudgetExceededError } from '../../../application/usecases/ratelimit/UserBudget'
 
 @Route('prevalidation')
 export class PreValidationController extends Controller {
@@ -54,8 +55,9 @@ export class PreValidationController extends Controller {
   @Post("reviewCase")
   async reviewCase(@Body() data: IReviewCaseRequest, @Request() request: any) {
     try {
-      const service = await this.scoped(request);
       const actor = await this.getActor(request);
+      preValidationBudget.consume(actor.userId);
+      const service = await this.scoped(request);
       const result = await service.reviewCase(data.projectId, actor);
 
       // 200 even when some sections failed: the findings from the sections that
@@ -63,6 +65,10 @@ export class PreValidationController extends Controller {
       // what is missing, so a partial result is never mistaken for a clean one.
       return new Response().sendResponseSuccess(result, true);
     } catch (Error: any) {
+      if (Error instanceof UserBudgetExceededError) {
+        this.setStatus(429);
+        return new Response().sendResponseFailure(Error.message, false);
+      }
       this.setStatus(500);
       return new Response().sendResponseFailure("Something went wrong " + Error, false);
     }
