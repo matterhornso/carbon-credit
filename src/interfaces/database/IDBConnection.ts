@@ -5,6 +5,8 @@ import { ICaseDocumentInterface } from "../../domain/case_document/caseDocumentI
 import { UpdateCaseDocumentSection } from "../../domain/case_document/UpdateCaseDocumentSection";
 import { ISourceDocumentInterface } from "../../domain/source_document/sourceDocumentInterface";
 import { IAuditEventInterface } from "../../domain/audit_event/auditEventInterface";
+import { IFindingInterface } from "../../domain/finding/findingInterface";
+import { CreateFinding } from "../../domain/finding/CreateFinding";
 
 // tenantId is a required first argument on every operation touching tenant
 // data. It is not optional and has no default: a caller that has not resolved a
@@ -43,3 +45,11 @@ export abstract class AuditEventConnection {
   abstract getEventsByProjectId(tenantId: string, projectId: string): Promise<IAuditEventInterface[]>
 }
 
+
+export abstract class FindingConnection {
+  abstract createFinding(tenantId: string, finding: CreateFinding): Promise<IFindingInterface>
+  abstract replaceOpenSelfReviewFindings(tenantId: string, projectId: string, sectionKey: string, findings: CreateFinding[]): Promise<IFindingInterface[]>
+  abstract getFindingsByProjectId(tenantId: string, projectId: string): Promise<IFindingInterface[]>
+  abstract getFindingStatsByMethodology(tenantId: string, methodologyCode?: string): Promise<any[]>
+  abstract updateFindingStatus(tenantId: string, id: string, status: string, resolutionNote?: string): Promise<IFindingInterface | null>
+}

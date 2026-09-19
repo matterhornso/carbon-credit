@@ -42,6 +42,10 @@ const EXPECTED_ROUTES = [
   'post /api/v1/project/transition',
   'get /api/v1/project/getProjectById',
   'get /api/v1/project/getAllProjects',
+  'post /api/v1/prevalidation/reviewCase',
+  'get /api/v1/prevalidation/getFindings',
+  'get /api/v1/prevalidation/getFindingStats',
+  'post /api/v1/prevalidation/resolveFinding',
 ];
 
 // Routes that may legitimately be served without authentication. Empty, and a
@@ -175,6 +179,7 @@ describe('Test tenant scoping at the controller boundary', () => {
     'CaseDocumentRepository',
     'SourceDocumentRepository',
     'AuditEventRepository',
+    'FindingRepository',
   ];
 
   function controllerAllowlist(): string[] {

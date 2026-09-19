@@ -46,3 +46,14 @@ export interface ISuperAdminRequest {
   permission: any[]
 }
 
+
+export interface IReviewCaseRequest {
+  projectId: string;
+}
+
+export interface IResolveFindingRequest {
+  findingId: string;
+  projectId: string;
+  status: string; // 'open' | 'accepted' | 'rejected' | 'resolved'
+  resolutionNote?: string;
+}

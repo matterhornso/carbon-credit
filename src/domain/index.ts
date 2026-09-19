@@ -19,3 +19,4 @@ export { SourceDocument } from "./source_document/SourceDocument";
 
 export { CreateAuditEvent } from "./audit_event/CreateAuditEvent";
 export { AuditEvent } from "./audit_event/AuditEvent";
+export { CreateFinding } from "./finding/CreateFinding";
