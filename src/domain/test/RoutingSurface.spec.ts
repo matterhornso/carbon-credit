@@ -123,30 +123,27 @@ describe('Test the served routing surface', () => {
   // The specific holes the audit found, pinned by name so nobody reintroduces
   // them by "fixing" the tsoa allowlist back to a wildcard.
   //
-  // IMPORTANT, and the correction to a claim made when this file was written:
-  // projectSectionA-E are NOT dead. The original audit traced consumers of
+  // Both verticals are now deleted outright, but the guard stays: it is cheap,
+  // and the history is worth keeping because the tracing went wrong twice.
+  //
+  // The original audit called all nine endpoints dead. It traced consumers of
   // Endpoints.ts and missed the API-wrapper layer above it, where the real
-  // callers live. There were two, and each was found only after assuming there
-  // were none:
+  // callers lived - two of them, each found only after assuming there were
+  // none:
   //
-  //   dataCollectionCalls -> useProject.moveToNextSection  -> IssuanceDataCollection
-  //   dataCollectionCalls -> useReport.moveToNextSection   -> MonthlyReportUpdate
+  //   dataCollectionCalls -> useProject.moveToNextSection -> IssuanceDataCollection
+  //   dataCollectionCalls -> useReport.moveToNextSection  -> MonthlyReportUpdate
   //
-  // The first is gone: /issuance-data-collection and its 42-file tree were
-  // retired on 2026-09-19. The second is still a live ISSUER route
-  // (/monthly-report-update) that five components navigate to, so these five
-  // endpoints still have a real consumer and cannot simply be deleted.
+  // Both features were retired deliberately (2026-09-19) rather than having
+  // their endpoints deleted from under them, which is what made the deletion
+  // safe. report/* was the one part of the original claim that did hold: no
+  // caller anywhere, and three of its four endpoints served with no
+  // authentication middleware at all.
   //
-  // They are nonetheless held out of the served surface, which means that one
-  // save path is currently broken on this branch. That is deliberate and it is
-  // a decision, not a cleanup: their five collections have no tenantId field at
-  // all, so scoping them is a schema migration plus a backfill, and re-routing
-  // them as they stand would restore a genuine cross-tenant read. Either
-  // migrate and scope them, or retire MonthlyReportUpdate too.
-  //
-  // report/* is a different case and stays deleted: no caller anywhere - that
-  // half of the original claim did hold - and three of its four endpoints had
-  // no authentication middleware at all.
+  // The lesson this file exists to carry: grep finds imports, not consumption.
+  // It missed an API wrapper here, and separately it called five redux slices
+  // orphaned when a live hook was reading them by destructuring the store. The
+  // compiler caught that one. Prefer a check the type system can make.
   it('does not serve the retired legacy endpoints', () => {
     const retired = mounted
       .map(r => r.route)
