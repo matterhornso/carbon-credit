@@ -17,8 +17,16 @@ export const ALLOWED_TRANSITIONS: Record<ProjectStatus, ProjectStatus[]> = {
   ISSUER_FINALIZED: [PROJECT_STATUSES.EXPORTED_FOR_VERIFICATION, PROJECT_STATUSES.CASE_DRAFT_READY],
   EXPORTED_FOR_VERIFICATION: [PROJECT_STATUSES.VERIFIER_REVIEW],
   VERIFIER_REVIEW: [PROJECT_STATUSES.VERIFIED, PROJECT_STATUSES.REJECTED],
-  VERIFIED: [],
+  // A verified project is registered once, then monitors for the life of its
+  // crediting period. MONITORING is self-looping by design: each cycle is a
+  // MonitoringPeriod record rather than a project-level state, because a
+  // project in year three of twenty is in the same state it was in year two -
+  // what differs is which period is open.
+  VERIFIED: [PROJECT_STATUSES.REGISTERED],
   REJECTED: [PROJECT_STATUSES.CASE_DRAFT_READY],
+  REGISTERED: [PROJECT_STATUSES.MONITORING],
+  MONITORING: [PROJECT_STATUSES.CREDITING_PERIOD_CLOSED],
+  CREDITING_PERIOD_CLOSED: [],
 };
 
 export function assertValidTransition(from: string, to: string): void {

@@ -13,6 +13,15 @@ export const PROJECT_STATUSES = {
   VERIFIER_REVIEW: 'VERIFIER_REVIEW',
   VERIFIED: 'VERIFIED',
   REJECTED: 'REJECTED',
+  // Past verification. VERIFIED used to be terminal, which put the end of the
+  // lifecycle exactly where a developer's recurring work begins: a registered
+  // project is monitored every year for the length of its crediting period,
+  // and that load is what actually caps portfolio size.
+  REGISTERED: 'REGISTERED',
+  MONITORING: 'MONITORING',
+  // Terminal for real: the crediting period is over and nothing further can be
+  // issued against the project.
+  CREDITING_PERIOD_CLOSED: 'CREDITING_PERIOD_CLOSED',
 } as const;
 
 export type ProjectStatus = typeof PROJECT_STATUSES[keyof typeof PROJECT_STATUSES];
