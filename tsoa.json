@@ -12,7 +12,8 @@
     "src/interfaces/controllers/generation/GenerationController.ts",
     "src/interfaces/controllers/methodology/MethodologyController.ts",
     "src/interfaces/controllers/project/ProjectController.ts",
-    "src/interfaces/controllers/prevalidation/PreValidationController.ts"
+    "src/interfaces/controllers/prevalidation/PreValidationController.ts",
+    "src/interfaces/controllers/monitoring/MonitoringController.ts"
   ],
   "specMerging": "recursive",
   "spec": {

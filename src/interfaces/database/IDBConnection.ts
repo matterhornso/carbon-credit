@@ -7,6 +7,8 @@ import { ISourceDocumentInterface } from "../../domain/source_document/sourceDoc
 import { IAuditEventInterface } from "../../domain/audit_event/auditEventInterface";
 import { IFindingInterface } from "../../domain/finding/findingInterface";
 import { CreateFinding } from "../../domain/finding/CreateFinding";
+import { IMonitoringPeriodInterface } from "../../domain/monitoring/monitoringInterface";
+import { CreateMonitoringPeriod } from "../../domain/monitoring/CreateMonitoringPeriod";
 
 // tenantId is a required first argument on every operation touching tenant
 // data. It is not optional and has no default: a caller that has not resolved a
@@ -52,4 +54,12 @@ export abstract class FindingConnection {
   abstract getFindingsByProjectId(tenantId: string, projectId: string): Promise<IFindingInterface[]>
   abstract getFindingStatsByMethodology(tenantId: string, methodologyCode?: string): Promise<any[]>
   abstract updateFindingStatus(tenantId: string, id: string, status: string, resolutionNote?: string): Promise<IFindingInterface | null>
+}
+
+export abstract class MonitoringConnection {
+  abstract createPeriod(tenantId: string, period: CreateMonitoringPeriod): Promise<IMonitoringPeriodInterface>
+  abstract getPeriodsByProjectId(tenantId: string, projectId: string): Promise<IMonitoringPeriodInterface[]>
+  abstract getPeriodById(tenantId: string, id: string): Promise<IMonitoringPeriodInterface | null>
+  abstract updateParameter(tenantId: string, id: string, parameterName: string, update: Record<string, any>): Promise<IMonitoringPeriodInterface | null>
+  abstract updatePeriodStatus(tenantId: string, id: string, status: string, extra?: Record<string, any>): Promise<IMonitoringPeriodInterface | null>
 }

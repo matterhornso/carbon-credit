@@ -57,3 +57,24 @@ export interface IResolveFindingRequest {
   status: string; // 'open' | 'accepted' | 'rejected' | 'resolved'
   resolutionNote?: string;
 }
+
+export interface IOpenPeriodsRequest {
+  projectId: string;
+  // Overrides the annual default. Provided rather than derived, because the
+  // methodology's frequency strings cannot be parsed into a cadence.
+  periodLengthMonths?: number;
+}
+
+export interface IRecordParameterRequest {
+  periodId: string;
+  parameter: string;
+  value?: string;
+  evidenceDocumentIds?: string[];
+  // Supplying this marks the parameter not applicable. An exclusion with no
+  // reason is a finding, so the reason is the switch rather than a flag.
+  notApplicableReason?: string;
+}
+
+export interface ISubmitPeriodRequest {
+  periodId: string;
+}
