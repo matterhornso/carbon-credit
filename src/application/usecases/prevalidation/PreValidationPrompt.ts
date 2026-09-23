@@ -128,6 +128,31 @@ Return {"findings": []} if you would raise nothing.`;
   ];
 }
 
+export interface IDroppedFinding {
+  claim: string;
+  reason: string;
+}
+
+export interface IParsedFindings {
+  findings: CreateFinding[];
+  dropped: IDroppedFinding[];
+}
+
+/**
+ * Severity and category arrive as free text. Case, padding and hyphen-vs-
+ * underscore are formatting, not meaning: "Blocking" is the same severity as
+ * "blocking", and a model that capitalises its enums is not expressing
+ * uncertainty. Normalising those is not coercion.
+ *
+ * Mapping a model's own vocabulary ("high", "critical", "P1") onto ours would
+ * be, so that is left to fail — see parseFindings.
+ */
+function normalizeEnum(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  return normalized || undefined;
+}
+
 /**
  * Turn the model's response into validated findings.
  *
@@ -135,15 +160,34 @@ Return {"findings": []} if you would raise nothing.`;
  * guessed-at severity is worse than no finding: it enters the series as a real
  * data point and quietly shifts the statistics the whole aggregate exists to
  * produce. CreateFinding does the validating, so the rules live in one place.
+ *
+ * But a drop is never silent. The original version returned only the survivors,
+ * so a model that emitted "severity": "critical" on every finding produced a
+ * clean, empty review — a project appeared to pass pre-validation precisely
+ * because the parser had thrown its objections away. Dropped findings are
+ * returned alongside, and the caller records the count.
+ *
+ * The findings key is tolerated in a few shapes because the schema asks for one
+ * and models occasionally supply another; the contents still have to validate.
  */
+function extractCandidates(raw: any): IRawFinding[] | null {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== 'object') return null;
+  for (const key of ['findings', 'results', 'issues']) {
+    if (Array.isArray(raw[key])) return raw[key];
+  }
+  return null;
+}
+
 export function parseFindings(
-  raw: { findings?: IRawFinding[] } | null | undefined,
+  raw: { findings?: IRawFinding[] } | IRawFinding[] | null | undefined,
   context: { projectId: string; sectionKey: string; methodologyCode?: string; raisedByUserId?: string }
-): CreateFinding[] {
-  const candidates = raw?.findings;
-  if (!Array.isArray(candidates)) return [];
+): IParsedFindings {
+  const candidates = extractCandidates(raw);
+  if (!candidates) return { findings: [], dropped: [] };
 
   const findings: CreateFinding[] = [];
+  const dropped: IDroppedFinding[] = [];
   const seen = new Set<string>();
 
   for (const candidate of candidates) {
@@ -159,17 +203,22 @@ export function parseFindings(
         claim: candidate?.claim,
         issue: candidate?.issue,
         remediation: candidate?.remediation,
-        severity: candidate?.severity,
-        category: candidate?.category,
+        severity: normalizeEnum(candidate?.severity),
+        category: normalizeEnum(candidate?.category),
         origin: FINDING_ORIGINS.SELF_REVIEW,
         methodologyCode: context.methodologyCode,
         raisedByUserId: context.raisedByUserId,
       }));
       seen.add(fingerprint);
-    } catch {
-      // Dropped on purpose — see above.
+    } catch (error: any) {
+      // Dropped on purpose — but counted, so a systematically malformed model
+      // shows up as a parse problem rather than as a clean case.
+      dropped.push({
+        claim: String(candidate?.claim || '(no claim)').slice(0, 200),
+        reason: error?.message || String(error),
+      });
     }
   }
 
-  return findings;
+  return { findings, dropped };
 }

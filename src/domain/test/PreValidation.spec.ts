@@ -176,7 +176,7 @@ describe('Test pre-validation finding parsing', () => {
     // Distinct claims on purpose: with the same claim, deduplication would drop
     // the malformed one and this test would pass even if severity were being
     // silently coerced. It has to fail for the reason it names.
-    const parsed = parseFindings({ findings: [
+    const { findings: parsed, dropped } = parseFindings({ findings: [
       finding({ claim: 'Claim one.' }),
       finding({ claim: 'Claim two.', severity: 'catastrophic' }),
       finding({ claim: 'Claim three.', category: 'vibes' }),
@@ -185,24 +185,58 @@ describe('Test pre-validation finding parsing', () => {
 
     expect(parsed).to.have.length(1);
     expect(parsed[0].claim).to.equal('Claim one.');
+    // The drop is reported, not swallowed. A model emitting an unmappable
+    // severity on every finding must not read as a case with nothing wrong.
+    expect(dropped).to.have.length(3);
+    expect(dropped[0].reason).to.match(/severity must be one of/);
+  });
+
+  it('normalises case, padding and hyphens in severity and category', () => {
+    // Formatting, not meaning. Dropping a blocking finding because the model
+    // wrote "Blocking" loses the most serious thing the pass found — this was
+    // a real gap, caught by running the pass against an actual model.
+    const { findings: parsed, dropped } = parseFindings({ findings: [
+      finding({ claim: 'A.', severity: 'Blocking', category: 'Methodology_Deviation' }),
+      finding({ claim: 'B.', severity: ' material ', category: 'evidence-gap' }),
+    ] } as any, ctx);
+
+    expect(dropped).to.have.length(0);
+    expect(parsed.map((f) => f.severity)).to.deep.equal(['blocking', 'material']);
+    expect(parsed.map((f) => f.category)).to.deep.equal(['methodology_deviation', 'evidence_gap']);
+  });
+
+  it('still refuses a foreign severity vocabulary rather than guessing at it', () => {
+    // "critical" is not a formatting variant of "blocking" — mapping it would
+    // be inventing a judgement the model did not make.
+    const { findings: parsed, dropped } = parseFindings(
+      { findings: [finding({ severity: 'critical' })] } as any, ctx);
+    expect(parsed).to.have.length(0);
+    expect(dropped).to.have.length(1);
+  });
+
+  it('accepts the findings array under a different key or bare', () => {
+    // The schema asks for {"findings": [...]}; models occasionally answer with
+    // a bare array or their own key. The contents still have to validate.
+    expect(parseFindings([finding()] as any, ctx).findings).to.have.length(1);
+    expect(parseFindings({ results: [finding()] } as any, ctx).findings).to.have.length(1);
   });
 
   it('deduplicates findings that repeat the same claim and issue', () => {
-    const parsed = parseFindings({ findings: [finding(), finding()] } as any, ctx);
+    const { findings: parsed } = parseFindings({ findings: [finding(), finding()] } as any, ctx);
     expect(parsed).to.have.length(1);
   });
 
   it('returns an empty list for a malformed or empty response rather than throwing', () => {
-    expect(parseFindings({ findings: [] } as any, ctx)).to.deep.equal([]);
-    expect(parseFindings(null, ctx)).to.deep.equal([]);
-    expect(parseFindings({} as any, ctx)).to.deep.equal([]);
-    expect(parseFindings({ findings: 'nope' } as any, ctx)).to.deep.equal([]);
+    expect(parseFindings({ findings: [] } as any, ctx).findings).to.deep.equal([]);
+    expect(parseFindings(null, ctx).findings).to.deep.equal([]);
+    expect(parseFindings({} as any, ctx).findings).to.deep.equal([]);
+    expect(parseFindings({ findings: 'nope' } as any, ctx).findings).to.deep.equal([]);
   });
 
   it('stamps every parsed finding as self-review and carries the methodology code', () => {
     // origin is what later makes "did the VVB agree with us" answerable, and
     // methodologyCode is what lets the series be grouped without a join.
-    const parsed = parseFindings({ findings: [finding()] } as any, ctx);
+    const { findings: parsed } = parseFindings({ findings: [finding()] } as any, ctx);
     expect(parsed[0].origin).to.equal(FINDING_ORIGINS.SELF_REVIEW);
     expect(parsed[0].methodologyCode).to.equal('VM0047');
     expect(parsed[0].sectionKey).to.equal('additionality');

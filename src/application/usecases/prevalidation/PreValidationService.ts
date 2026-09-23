@@ -13,7 +13,7 @@ import { AuditEventUseCase } from "../index";
 import { AuditEvent } from "../../../domain";
 import { resolveGuidance } from "../registry/RegistryTemplate";
 import { registryForMethodology } from "../registry/RegistryCatalog";
-import { buildPreValidationPrompt, IRawFinding, parseFindings } from "./PreValidationPrompt";
+import { buildPreValidationPrompt, IDroppedFinding, IRawFinding, parseFindings } from "./PreValidationPrompt";
 
 /**
  * Adversarial pre-validation: read a finished case the way a validator would,
@@ -42,6 +42,10 @@ export interface IPreValidationResult {
   skipped: string[];        // section keys with nothing to review, and why they were skipped
   findings: IFindingInterface[];
   failedSections: { sectionKey: string; error: string }[];
+  // Findings the model produced that did not survive parsing. Surfaced rather
+  // than swallowed: a non-zero count here means the review is incomplete for a
+  // reason that has nothing to do with the case being sound.
+  droppedFindings: { sectionKey: string; claim: string; reason: string }[];
 }
 
 // Statuses that mean a section has content worth attacking. Reviewing a
@@ -82,6 +86,7 @@ export class PreValidationService {
       skipped: [],
       findings: [],
       failedSections: [],
+      droppedFindings: [],
     };
 
     for (const section of sections) {
@@ -91,9 +96,10 @@ export class PreValidationService {
       }
 
       try {
-        const findings = await this.reviewSection(project, methodology, caseDocument, section, actor);
+        const { findings, dropped } = await this.reviewSection(project, methodology, caseDocument, section, actor);
         result.reviewed.push(section.key);
         result.findings.push(...findings);
+        result.droppedFindings.push(...dropped.map((d) => ({ sectionKey: section.key, ...d })));
       } catch (error: any) {
         // Recorded, not thrown. The sections that did review produced real
         // findings and the caller should get them.
@@ -107,6 +113,9 @@ export class PreValidationService {
       failed: result.failedSections.length,
       findings: result.findings.length,
       blocking: result.findings.filter((f) => f.severity === 'blocking').length,
+      // Recorded even when zero: "no findings" and "findings that would not
+      // parse" must never look the same in the trail.
+      dropped: result.droppedFindings.length,
     });
 
     return result;
@@ -127,7 +136,7 @@ export class PreValidationService {
     caseDocument: ICaseDocumentInterface,
     section: ICaseSection,
     actor: IPreValidationActor
-  ): Promise<IFindingInterface[]> {
+  ): Promise<{ findings: IFindingInterface[]; dropped: IDroppedFinding[] }> {
     const guidance = resolveGuidance(registryForMethodology(methodology), methodology)
       .find((g) => g.section === section.key);
 
@@ -147,7 +156,7 @@ export class PreValidationService {
       temperature: 0.1,
     });
 
-    const parsed = parseFindings(raw, {
+    const { findings: parsed, dropped } = parseFindings(raw, {
       projectId: String(project._id),
       sectionKey: section.key,
       methodologyCode: methodology.code,
@@ -160,7 +169,7 @@ export class PreValidationService {
       parsed
     );
 
-    return persisted;
+    return { findings: persisted, dropped };
   }
 
   async getFindings(projectId: string): Promise<IFindingInterface[]> {
