@@ -44,12 +44,15 @@ export class LLMServiceError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Config resolution — provider-agnostic. Points at GMI Cloud today, could
-// point at api.openai.com tomorrow by changing env vars only.
+// Config resolution — provider-agnostic. Any OpenAI-compatible /v1 endpoint
+// works; the provider is chosen by LLM_BASE_URL + LLM_MODEL + LLM_API_KEY.
+// The defaults point at ASI:Cloud (Cudos) serverless inference, which replaced
+// GMI Cloud in September 2026. LLM_MODEL must be an exact id from
+// GET <LLM_BASE_URL>/models — tools/llm-probe.sh checks that for you.
 // ---------------------------------------------------------------------------
 
-const DEFAULT_BASE_URL = 'https://api.gmi-serving.com/v1';
-const DEFAULT_MODEL = 'MiniMaxAI/MiniMax-M2.7';
+const DEFAULT_BASE_URL = 'https://inference.asicloud.cudos.org/v1';
+const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct';
 const DEFAULT_TIMEOUT_MS = 120000;
 const DEFAULT_MAX_TOKENS = 8192;
 
@@ -83,7 +86,9 @@ export class LLMService {
     }
 
     const baseUrl = process.env['LLM_BASE_URL'] || DEFAULT_BASE_URL;
-    const model = options?.model ?? process.env['LLM_MODEL'] ?? DEFAULT_MODEL;
+    // `||`, not `??`: an empty LLM_MODEL (unset config file, blank Railway
+    // variable) must fall back to the default rather than be sent as "".
+    const model = options?.model || process.env['LLM_MODEL'] || DEFAULT_MODEL;
     const timeoutMs = options?.timeoutMs ?? envNumber('LLM_TIMEOUT_MS', DEFAULT_TIMEOUT_MS);
     const maxTokens = options?.maxTokens ?? envNumber('LLM_MAX_TOKENS', DEFAULT_MAX_TOKENS);
 

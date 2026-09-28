@@ -176,18 +176,18 @@ cmd_up() {
 
   # carbon-credit — the origination backend. LLM_* are read lazily per call,
   # so the service starts fine without them; generation will fail without a key.
-  local llm_key="" llm_base="" llm_model=""
-  [ -f "$HOME/.config/gmi/minimax.key" ] && llm_key="$(cat "$HOME/.config/gmi/minimax.key")"
-  [ -f "$HOME/.config/gmi/base_url" ] && llm_base="$(cat "$HOME/.config/gmi/base_url")"
-  [ -f "$HOME/.config/gmi/model" ] && llm_model="$(cat "$HOME/.config/gmi/model")"
-  [ -n "$llm_key" ] || warn "no LLM key at ~/.config/gmi/minimax.key — case generation will fail (everything else works)"
+  # Provider settings come from tools/llm-env.sh: exported LLM_* vars, else
+  # ~/.config/climat/llm.{key,base_url,model}. Run tools/llm-probe.sh to check them.
+  source "$SCRIPT_DIR/llm-env.sh"
+  [ -n "${LLM_API_KEY:-}" ] || warn "no LLM key — put it in ~/.config/climat/llm.key (see tools/llm-env.sh); case generation will fail, everything else works"
+  [ -n "${LLM_MODEL:-}" ]   || warn "no LLM_MODEL — ~/.config/climat/llm.model is empty; the service default will be used"
 
   start_service carbon-credit carbon-credit $PORT_CARBON \
     ENVIRONMENT=test MONGODB_URI= MONGODB_HOST=mongodb://localhost:$PORT_MONGO \
     MONGODB_PORT=$PORT_MONGO DB_NAME=dev PORT=$PORT_CARBON \
     AUTH_SERVICE_URL=$GW USER_SERVICE_URL=$GW ROLE_SERVICE_URL=$GW \
     TENANT_DEFAULT_SLUG=tenant-zero \
-    LLM_API_KEY="$llm_key" LLM_BASE_URL="$llm_base" LLM_MODEL="$llm_model"
+    LLM_API_KEY="${LLM_API_KEY:-}" LLM_BASE_URL="${LLM_BASE_URL:-}" LLM_MODEL="${LLM_MODEL:-}"
 
   seed_tenant
   seed_methodologies
